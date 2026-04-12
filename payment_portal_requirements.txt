@@ -1,0 +1,398 @@
+PAYMENT PORTAL REQUIREMENTS — 55 QUESTIONS & ANSWERS
+For Small to Medium Startups | Dashboard · Invoices · Payment Links · 10 Gateway Integrations
+==============================================================================================
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 1: CORE FEATURES & ARCHITECTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Q1. What is the minimum viable feature set for a small startup payment portal?
+A: Account registration & login, a dashboard showing balances and recent transactions, at least
+   2–3 gateway integrations, invoice creation, payment link generation, webhook listener, and a
+   basic reporting page. Everything else can be phased in.
+
+Q2. What tech stack is recommended for a multi-gateway payment portal?
+A: Frontend: Next.js or React for SPA-style dashboards.
+   Backend: Node.js (Express/Fastify) or Python (FastAPI).
+   Database: PostgreSQL for transactional data.
+   Queue: Redis/BullMQ for webhook processing.
+   Infrastructure: VPS or managed cloud (AWS/GCP). Docker for containerization from day one.
+
+Q3. Should the portal be multi-tenant from day one?
+A: Yes, if you plan to onboard multiple business users. Multi-tenancy means each account has
+   isolated data, separate gateway credentials, and its own branding. Design the DB schema with
+   a tenant_id on every table early — retrofitting it later is expensive.
+
+Q4. What database schema changes are needed to support multiple gateways per account?
+A: Create a payment_methods table with columns: id, tenant_id, gateway_slug (stripe/paypal/etc.),
+   public_key, encrypted_secret_key, webhook_secret, is_active, created_at. Never store raw keys
+   in plaintext — always encrypt at rest.
+
+Q5. How should the dashboard home screen be structured?
+A: Top row: 4 metric cards (total revenue today, total transactions, pending payouts, failed
+   payments). Middle: a 30-day revenue line chart. Bottom: recent transactions table with status
+   badges. Add a quick-action button row (New invoice, New payment link, Payout).
+
+Q6. What analytics should the portal expose out of the box?
+A: Revenue over time (daily/weekly/monthly), transaction volume by gateway, success vs failure
+   rate, average transaction value, refund rate, payout timeline, and top customers by spend.
+   Charts using Chart.js or Recharts are sufficient at MVP stage.
+
+Q7. Do we need a role and permission system?
+A: Yes. At minimum:
+   - Owner: full access including API keys
+   - Admin: all features except key management
+   - Viewer: read-only dashboard and reports
+   Implement RBAC early since adding it later requires touching every route.
+
+Q8. What notification system is required?
+A: Email notifications (SendGrid/Resend) for: payment received, payment failed, payout completed,
+   invoice paid, refund issued. In-portal bell notifications for real-time events. Optional: Slack
+   webhook integration for high-value transactions.
+
+Q9. What is the right approach to API key management for users?
+A: Let users generate API key pairs (public + secret) from Settings. Secret keys should only be
+   shown once at creation. Store only a hashed version in the DB. Provide key rotation, revocation,
+   and a permissions scope selector (read-only, write, admin).
+
+Q10. Should the portal have a mobile app or just be a responsive web app?
+A: For MVP, a fully responsive web app (mobile-first CSS) is sufficient. Native mobile apps
+   (React Native) are phase 2. Prioritize responsive tables, collapsible sidebars, and
+   touch-friendly tap targets from day one.
+
+Q11. What is the recommended project folder structure?
+A: /src/api       — route handlers
+   /src/services  — business logic (PaymentService, InvoiceService)
+   /src/gateways  — adapter implementations per gateway
+   /src/workers   — queue processors (webhooks, emails)
+   /src/models    — DB models/schema
+   /src/middleware — auth, rate limiting, error handling
+   /src/config    — env vars, gateway config map
+
+Q12. What queue system is needed and why?
+A: A job queue (Redis + BullMQ or SQS) is essential for: processing webhooks asynchronously,
+   sending emails without blocking request threads, retrying failed gateway calls, generating
+   PDF invoices/reports, and scheduled jobs (overdue invoice detection, auto-payouts). Never
+   do these synchronously in API handlers.
+
+Q13. What should the onboarding flow look like for a new user?
+A: Step 1: Create account (email, password).
+   Step 2: Verify email.
+   Step 3: Business profile (name, country, currency).
+   Step 4: Connect first gateway (guided flow with credential inputs + live test).
+   Step 5: Dashboard tour.
+   Skip option at each step. Show a progress checklist on the dashboard until complete.
+
+Q14. What monitoring and observability is needed?
+A: Application error tracking (Sentry), uptime monitoring (UptimeRobot/Betterstack), structured
+   logging (Winston/Pino to a log aggregator), gateway health dashboard (custom), and DB query
+   performance monitoring. Alert on: error rate >1%, gateway failure rate >5%, p95 response >2s.
+
+Q15. What are the DevOps requirements for launch?
+A: - CI/CD pipeline (GitHub Actions or GitLab CI)
+   - Staging environment mirroring production
+   - Zero-downtime deployments (rolling updates)
+   - Automated DB migrations (Flyway/Liquibase)
+   - Daily DB backups with point-in-time recovery
+   - Environment variable management (Doppler or AWS Secrets Manager)
+   - Docker + docker-compose for local development parity
+
+Q16. What third-party integrations should be on the roadmap?
+A: Accounting:   QuickBooks, Xero (sync invoices and payments)
+   CRM:          HubSpot, Salesforce
+   E-commerce:   Shopify, WooCommerce
+   Comms:        Slack alerts, Twilio SMS receipts
+   Tax:          TaxJar, Avalara
+   Analytics:    Google Analytics, Segment
+
+Q17. What are the legal and compliance documents needed before launch?
+A: Terms of Service, Privacy Policy (GDPR/CCPA compliant), Acceptable Use Policy (prohibit
+   illegal payments), Cookie Policy, and a Data Processing Agreement for EU users. Consult a
+   payments lawyer if you plan to hold funds in escrow or act as a payment facilitator rather
+   than a pure SaaS tool connecting users to gateways.
+
+Q18. What does a realistic MVP timeline look like?
+A: Week 1–2:   Auth, multi-tenancy, DB schema, gateway credentials manager
+   Week 3–4:   Stripe + PayPal adapters, webhook listener, payment router
+   Week 5–6:   Invoice builder, payment links, hosted checkout page
+   Week 7–8:   Dashboard, reporting, notifications
+   Week 9–10:  Security hardening, QA, staging environment
+   Week 11–12: Beta launch with 3 gateways; remaining gateways in phase 2
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 2: PAYMENT GATEWAYS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Q19. Which 10 payment gateways should be supported at launch?
+A: 1.  Stripe          — global cards, wallets, subscriptions
+   2.  PayPal          — consumer trust, guest checkout
+   3.  Square          — retail + online
+   4.  Braintree       — owned by PayPal, advanced vaulting
+   5.  Authorize.Net   — enterprise US merchants
+   6.  Adyen           — enterprise global
+   7.  Razorpay        — India/SE Asia
+   8.  Mollie          — Europe-focused
+   9.  Checkout.com    — global, high-volume
+   10. 2Checkout/Verifone — global recurring billing
+
+Q20. How should gateway credentials be stored and managed per user?
+A: In a gateway_credentials table, encrypted with AES-256 (using a KMS-managed key, not
+   app-level). Store: gateway_slug, publishable_key, secret_key (encrypted), webhook_secret
+   (encrypted), mode (live/test), is_default, last_verified_at.
+
+Q21. How should the portal test whether entered gateway credentials are valid?
+A: On save, make a lightweight API call to the gateway (e.g., Stripe: retrieve account info via
+   /v1/account; PayPal: generate an OAuth token). Show a green checkmark or a specific error
+   message. Schedule re-validation daily to catch expired keys.
+
+Q22. What is the architecture for routing a payment through the correct gateway?
+A: Create a PaymentRouter service: accepts (amount, currency, tenant_id, gateway_preference).
+   Looks up active credentials for the tenant and chosen gateway, instantiates the correct
+   gateway adapter, executes the charge, and returns a normalized PaymentResult object.
+
+Q23. What is the adapter pattern and why is it critical for multi-gateway portals?
+A: Each gateway has a unique API. The adapter pattern wraps each gateway in a common interface:
+   charge(), refund(), getTransaction(), createWebhook(). Your core business logic never calls
+   Stripe or PayPal directly — it calls the adapter, so swapping gateways requires zero changes
+   upstream.
+
+Q24. How should Stripe be integrated specifically?
+A: Use the official stripe-node SDK. Required credentials: Publishable Key + Secret Key +
+   Webhook Signing Secret. Key features to implement: PaymentIntents (SCA-compliant), Customer
+   objects for vaulted cards, Webhooks for async event handling, Stripe Connect for marketplace
+   payouts.
+
+Q25. How should PayPal be integrated?
+A: Use PayPal REST SDK or direct REST API v2. Required: Client ID + Client Secret. Create Orders
+   via /v2/checkout/orders, capture payments, and handle IPN (Instant Payment Notifications) for
+   async confirmations. Store the PayPal Order ID mapped to your internal transaction ID.
+
+Q26. What is the complexity difference between Stripe and Adyen integration?
+A: Stripe is developer-friendly with great docs and a predictable API — 1–2 days to basic
+   integration. Adyen requires merchant account approval, longer onboarding, more complex API
+   (Checkout Sessions vs. Component API), and stricter PCI requirements — plan 1–2 weeks for a
+   clean integration.
+
+Q27. How do you handle currency differences across gateways?
+A: Normalize all amounts internally to the smallest currency unit (cents for USD, paise for INR).
+   Store currency_code alongside every transaction. On display, use Intl.NumberFormat to format
+   per locale. Map your internal amount to the gateway's expected format in each adapter.
+
+Q28. What happens if a gateway is temporarily down?
+A: Implement a gateway health-check table. If a gateway returns 5xx errors 3 times in a row,
+   mark it as degraded. The PaymentRouter can then either: fail fast with a clear error, or if
+   the user has a fallback gateway configured, auto-route to it. Always surface the reason to
+   the user.
+
+Q29. How should webhook endpoints be designed?
+A: Create a single endpoint per gateway: /webhooks/stripe, /webhooks/paypal, etc. Each validates
+   the signature. Push valid events onto a queue (Redis/BullMQ). A worker processes them async —
+   never do heavy work in the webhook handler itself. Return 200 immediately after enqueueing.
+
+Q30. What webhook events should be handled for each gateway?
+A: Stripe:  payment_intent.succeeded, payment_intent.payment_failed, charge.refunded,
+            invoice.payment_succeeded, payout.paid
+   PayPal:  PAYMENT.CAPTURE.COMPLETED, PAYMENT.CAPTURE.DENIED, REFUND.COMPLETED
+   Map all to a normalized internal event type for gateway-agnostic downstream processing.
+
+Q31. Should users be able to set a default gateway?
+A: Yes. In gateway settings, allow the user to mark one gateway as default. The PaymentRouter
+   uses this unless a specific gateway is requested. Also allow invoice-level and payment-link-
+   level gateway override so a user can say "accept this invoice via PayPal only."
+
+Q32. How should the portal handle Stripe Connect for marketplace use cases?
+A: If your users are platforms collecting payments on behalf of sub-merchants, use Stripe Connect.
+   Users complete OAuth onboarding, you receive their connected account ID, and all charges are
+   routed through their account. This shifts PCI liability and KYC to Stripe. Requires Stripe
+   Platform Agreement and is separate from simple Stripe API key usage.
+
+Q33. What is the PayPal sandbox and how should it be used during development?
+A: PayPal Sandbox at developer.paypal.com provides test merchant and buyer accounts. Use Sandbox
+   Client ID + Secret for all dev/staging environments. Create test transactions, test IPN
+   notifications, and test refund flows entirely in sandbox. Switch to live credentials only
+   after QA sign-off in a staging environment.
+
+Q34. How should webhook signature verification work?
+A: Stripe: construct the expected signature by hashing the raw payload + timestamp with
+   HMAC-SHA256 and compare to the stripe-signature header value (timing-safe comparison).
+   PayPal: fetch the certificate URL from the event and verify the transmission signature.
+   Reject all webhooks that fail verification — return 400.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 3: SECURITY & COMPLIANCE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Q35. What are the PCI DSS requirements for a payment portal?
+A: If you are NOT handling raw card data (using hosted fields/redirect flows from Stripe, PayPal,
+   etc.), you qualify for SAQ A — the lightest PCI tier. Requirements: HTTPS everywhere, no card
+   data touches your servers, annual self-assessment questionnaire. If you store or transmit raw
+   card data, you need SAQ D — a full audit.
+
+Q36. What encryption is needed for stored gateway credentials?
+A: Use envelope encryption: encrypt each credential with a Data Encryption Key (DEK), and encrypt
+   the DEK with a Key Encryption Key (KEK) stored in a KMS (AWS KMS, Google Cloud KMS, or
+   HashiCorp Vault). Never store keys in .env files in production.
+
+Q37. What authentication method should the portal use?
+A: JWT-based auth with short-lived access tokens (15 min) and refresh tokens (30 days, stored as
+   httpOnly cookies). Implement MFA (TOTP via Google Authenticator) for accounts with live
+   gateway credentials. Use bcrypt (cost factor 12) for password hashing.
+
+Q38. How should the portal prevent fraudulent transactions?
+A: Implement: rate limiting per IP and per account, velocity checks (e.g., >5 failed attempts =
+   temporary block), amount anomaly detection (flag transactions >3x the account average), IP
+   geolocation mismatch alerts, and allow users to set per-transaction amount limits per gateway.
+
+Q39. What should the audit log capture?
+A: Every sensitive action: gateway credential added/updated/deleted, API key created/revoked,
+   payout initiated, refund issued, user role changed, login from new device/IP, failed login
+   attempts. Store: timestamp, user_id, action, IP, user_agent, payload snapshot (redacted).
+
+Q40. What HTTPS and TLS requirements apply?
+A: TLS 1.2 minimum, TLS 1.3 preferred. Disable TLS 1.0 and 1.1. Use strong cipher suites.
+   Enforce HSTS headers. Use Let's Encrypt for certificate automation. Set a 90-day cert
+   rotation reminder. Run your config through SSL Labs to verify an A+ rating.
+
+Q41. How should CSRF protection be implemented?
+A: Use SameSite=Strict cookies for session tokens. Add a CSRF token header (x-csrf-token) to
+   all state-changing requests. Validate on the server. For API-only routes using Bearer tokens,
+   CSRF is not required — but ensure CORS is restricted to your own domain.
+
+Q42. What data residency and GDPR considerations apply?
+A: If serving EU customers: store PII in EU-region servers, provide a data deletion endpoint
+   (/account/delete), export endpoint (/account/data), and a privacy policy. For payment records
+   you may be legally required to retain data for 5–7 years — implement a soft-delete that
+   anonymizes PII while preserving financial records.
+
+Q43. How should API rate limiting be implemented?
+A: Sliding window rate limiting at the API gateway level. Recommended limits:
+   - 100 requests/min for standard endpoints
+   - 10 requests/min for auth endpoints
+   - 5 requests/min for payout initiation
+   Return 429 with Retry-After header. Use Redis for distributed rate limit counters.
+
+Q44. What input validation and sanitization is required?
+A: All API inputs validated via a schema library (Zod, Joi, or class-validator). Validate: amount
+   > 0 and is a number, currency is valid ISO 4217 code, email matches format, date fields are
+   valid ISO dates. Sanitize all text inputs to prevent XSS. Use parameterized queries (never raw
+   string SQL). Run OWASP Top 10 checks before launch.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 4: UX, BILLING, INVOICES & PAYMENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Q45. What should the invoice builder include?
+A: Fields: invoice number (auto-generated), client name, client email, billing address, line items
+   (description, quantity, unit price), subtotal, tax rate(s), discount, total, currency, due
+   date, notes, payment terms. Allow PDF export and a public payment URL. Store status: draft,
+   sent, viewed, paid, overdue, cancelled.
+
+Q46. How should payment links work?
+A: A payment link is a shareable URL (/pay/{uuid}) that displays a hosted checkout page. Settings:
+   amount (fixed or customer-specified), currency, description, gateway to use, expiry date, max
+   uses, success redirect URL. No login required for the payer. Track each link's view and
+   conversion stats.
+
+Q47. What does a hosted checkout page need?
+A: Gateway branding (Stripe Elements or PayPal SDK renders the card UI), merchant logo, product/
+   service description, amount summary, security badges (SSL, PCI), and mobile-optimized layout.
+   Never build your own card input fields — always use the gateway's hosted components.
+
+Q48. How should the refund flow work?
+A: From the transaction detail page: click Refund, enter amount (full or partial), enter reason,
+   confirm. Portal calls the gateway's refund API, creates a refund record linked to the original
+   transaction, and triggers a notification to the payer. Show refund status: pending, processing,
+   completed, failed.
+
+Q49. What payout management features are needed?
+A: Manual payout initiation (to linked bank account), scheduled auto-payouts (daily/weekly/
+   monthly), payout history with gateway reference IDs, payout status tracking (pending /
+   in-transit / paid), and minimum payout threshold setting. Some gateways (Stripe) manage
+   payouts automatically — surface this clearly in the UI.
+
+Q50. What subscription/recurring billing features should be included?
+A: Create plans (name, amount, interval, trial days), assign customers to plans, track subscription
+   status (active, past_due, cancelled, paused), handle failed payment retries (dunning logic:
+   retry on day 3, 5, 10), and send dunning emails. Use Stripe Billing or Braintree subscriptions
+   as the backend engine.
+
+Q51. How should the customer/payer directory work?
+A: A Customers section showing all payers: name, email, total spend, transaction count, last
+   payment date. Clicking a customer shows their full payment history across all gateways. Allow
+   adding notes and tagging customers. Sync customer records with gateway customer objects
+   (Stripe Customer, PayPal payer_id).
+
+Q52. What should the settings section cover?
+A: - Profile:          name, email, company, logo upload
+   - Payment gateways: add/edit/remove, test/live mode toggle
+   - Notifications:    email/Slack preferences
+   - API keys:         generate, rotate, revoke
+   - Team members:     invite, assign roles
+   - Branding:         colors for hosted checkout pages
+   - Tax settings:     tax IDs, default tax rates
+   - Payout settings:  bank account, schedule
+
+Q53. How should the test vs live mode toggle work?
+A: Each gateway credential set should have a mode flag (test/live). A global environment toggle
+   in the header (Test mode / Live mode) switches all API calls to use the corresponding
+   credential set. In test mode, display a persistent yellow banner so users never accidentally
+   process live transactions while testing.
+
+Q54. What reporting and export features are needed?
+A: Date-range filter for all reports. Export transactions to CSV and PDF. Revenue by gateway, by
+   date, by customer. Tax summary report (for VAT/GST filing). Failed transaction report. Payout
+   reconciliation report. Monthly reports sent via email as a PDF are a high-value feature for
+   small business users.
+
+Q55. How should failed payment retries be handled?
+A: Log the failure reason (insufficient funds, card declined, expired card, network error). For
+   subscriptions, use dunning: retry automatically at configured intervals. For one-off payments,
+   notify the payer via email with a retry payment link. Track retry attempts in the transaction
+   record.
+
+Q56. What email notifications should be sent to payers (customers)?
+A: - Payment confirmation with receipt
+   - Payment failed with retry link
+   - Invoice received (with payment link)
+   - Refund issued confirmation
+   - Subscription renewal reminder (3 days before)
+   - Subscription cancellation confirmation
+   Emails should be white-labeled with the merchant's logo and branding.
+
+Q57. How should invoices be numbered and tracked?
+A: Auto-increment per tenant (INV-0001, INV-0002…). Store: status, sent_at, viewed_at (pixel
+   tracking), paid_at, payment_gateway_used, gateway_transaction_id. Allow manual override of
+   invoice number prefix and starting number. Past-due invoices should auto-tag at midnight via
+   a scheduled job.
+
+Q58. Should the portal support multiple currencies?
+A: Yes. Store base currency per account (set in settings). Allow invoice-level currency override.
+   Show exchange rate source and timestamp for reference. For payouts, the gateway handles FX
+   conversion — surface the gateway's converted payout amount clearly in the payout history.
+
+Q59. How should the portal handle partial payments on invoices?
+A: Allow a payment link to accept partial amounts (user enters amount). Record each payment
+   against the invoice, updating the balance_due field. Invoice status becomes "partially_paid"
+   until balance_due = 0. Show a payment history timeline on the invoice detail page.
+
+Q60. What should the public payment page (/pay/{id}) look like for maximum conversion?
+A: Merchant logo + name at top, clear amount and description, gateway's hosted card UI (Stripe
+   Elements), Apple Pay / Google Pay buttons if supported, security badges, no navigation or
+   distractions (no header/footer links). Mobile-first. Load time under 2 seconds. Show a
+   success screen with receipt download after payment.
+
+Q61. How should the portal handle disputes and chargebacks?
+A: When a chargeback webhook arrives, mark the transaction as "disputed," freeze associated
+   payout funds, and notify the merchant with an alert. Provide a dispute response workflow:
+   upload evidence (invoice, delivery confirmation), submit via the gateway API, and track
+   dispute status. Stripe and Braintree both have API endpoints for this.
+
+
+==============================================================================================
+END OF DOCUMENT — 55 Questions & Answers
+Payment Portal Requirements for Small to Medium Startups
+==============================================================================================
