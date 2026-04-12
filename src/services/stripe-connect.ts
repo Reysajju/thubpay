@@ -27,7 +27,7 @@ interface PlatformConfig {
  */
 export async function createPlatformAccount(): Promise<Stripe.Account> {
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-    apiVersion: '2024-06-20'
+    apiVersion: '2023-10-16'
   });
 
   const platformAccount = await stripe.accounts.create({
@@ -59,7 +59,7 @@ export async function createConnectedAccount(
   verificationUrl: string;
 }> {
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-    apiVersion: '2024-06-20'
+    apiVersion: '2023-10-16'
   });
 
   const connectedAccount = await stripe.accounts.create({
@@ -119,7 +119,7 @@ export async function getOnboardingUrl(
   workspaceId: string
 ): Promise<string | null> {
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-    apiVersion: '2024-06-20'
+    apiVersion: '2023-10-16'
   });
 
   const { data: credentials } = await admin
@@ -154,7 +154,7 @@ export async function chargeOnBehalfOfConnectedAccount(
   capture: boolean = true
 ): Promise<Stripe.Charge> {
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-    apiVersion: '2024-06-20'
+    apiVersion: '2023-10-16'
   });
 
   const charge = await stripe.charges.create({
@@ -187,7 +187,7 @@ export async function createPaymentIntentForConnectedAccount(
   currency: string
 ): Promise<Stripe.PaymentIntent> {
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-    apiVersion: '2024-06-20'
+    apiVersion: '2023-10-16'
   });
 
   const paymentIntent = await stripe.paymentIntents.create({
@@ -216,7 +216,7 @@ export async function createPayoutToConnectedAccount(
   currency: string
 ): Promise<Stripe.Payout> {
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-    apiVersion: '2024-06-20'
+    apiVersion: '2023-10-16'
   });
 
   const payout = await stripe.payouts.create({
@@ -251,7 +251,7 @@ export async function checkConnectedAccountStatus(
   requirements?: any;
 }> {
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-    apiVersion: '2024-06-20'
+    apiVersion: '2023-10-16'
   });
 
   const account = await stripe.accounts.retrieve(stripeAccountId);
@@ -281,7 +281,7 @@ export async function syncConnectedAccountBalances(
   pending: number;
 }> {
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-    apiVersion: '2024-06-20'
+    apiVersion: '2023-10-16'
   });
 
   const balance = await stripe.balance.retrieve({
@@ -303,7 +303,7 @@ export async function listChargesForConnectedAccount(
   limit: number = 10
 ): Promise<Stripe.Charge[]> {
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-    apiVersion: '2024-06-20'
+    apiVersion: '2023-10-16'
   });
 
   const charges = await stripe.charges.list({
@@ -321,7 +321,7 @@ export async function configurePlatformFee(
   percentage: number
 ): Promise<Stripe.ApplicationFee> {
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-    apiVersion: '2024-06-20'
+    apiVersion: '2023-10-16'
   });
 
   // This would typically be set on the platform account
@@ -343,7 +343,7 @@ export async function getPlatformFinancials(
   endDate: string
 ): Promise<any> {
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-    apiVersion: '2024-06-20'
+    apiVersion: '2023-10-16'
   });
 
   const reports = await stripe.reports.list({

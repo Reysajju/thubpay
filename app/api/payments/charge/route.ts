@@ -45,10 +45,10 @@ export async function POST(req: Request) {
   });
 
   await writeAuditLog({
-    tenantId,
+    workspaceId: tenantId,
     userId: user.id,
     action: 'payment.charge.attempted',
-    payload: {
+    details: {
       amount,
       currency,
       gateway: result.gateway,

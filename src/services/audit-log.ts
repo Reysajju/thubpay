@@ -35,7 +35,8 @@ export type AuditAction =
   | 'dispute_created'
   | 'subscription_created'
   | 'subscription_cancelled'
-  | 'subscription_renewed';
+  | 'subscription_renewed'
+  | 'payment.charge.attempted';
 
 /**
  * Log an audit event
