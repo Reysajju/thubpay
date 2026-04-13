@@ -1,4 +1,4 @@
-import jwt from 'jose';
+import { SignJWT, jwtVerify } from 'jose';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import bcrypt from 'bcryptjs';
 
@@ -12,8 +12,8 @@ export interface JWTPayload {
   email: string;
   workspaceId?: string;
   role: string;
-  iat: number;
-  exp: number;
+  iat?: number;
+  exp?: number;
 }
 
 export interface AuthResult {
@@ -27,10 +27,10 @@ export interface AuthResult {
 /**
  * JWT signing key
  */
-async function getSigningKey(): Promise<Buffer> {
+async function getSigningKey(): Promise<Uint8Array> {
   const secret = process.env.JWT_SECRET || '';
   if (!secret) throw new Error('JWT_SECRET not configured');
-  return Buffer.from(secret);
+  return new TextEncoder().encode(secret);
 }
 
 /**
@@ -39,14 +39,11 @@ async function getSigningKey(): Promise<Buffer> {
 export async function generateAccessToken(payload: JWTPayload): Promise<string> {
   const secret = await getSigningKey();
 
-  return new jwt.JWT({
-    payload,
-    key: secret
-  })
+  return new SignJWT({ ...payload as any })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('15m') // Short-lived token
-    .encode();
+    .sign(secret);
 }
 
 /**
@@ -55,14 +52,11 @@ export async function generateAccessToken(payload: JWTPayload): Promise<string> 
 export async function generateRefreshToken(payload: JWTPayload): Promise<string> {
   const secret = await getSigningKey();
 
-  return new jwt.JWT({
-    payload: { ...payload, type: 'refresh' },
-    key: secret
-  })
+  return new SignJWT({ ...payload as any, type: 'refresh' })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('30d') // Longer-lived token
-    .encode();
+    .sign(secret);
 }
 
 /**
@@ -71,8 +65,8 @@ export async function generateRefreshToken(payload: JWTPayload): Promise<string>
 export async function verifyAccessToken(token: string): Promise<JWTPayload | null> {
   try {
     const secret = await getSigningKey();
-    const { payload } = await jwt.jwtVerify(token, secret);
-    return payload as JWTPayload;
+    const { payload: decodedPayload } = await jwtVerify(token, secret);
+    return decodedPayload as any as JWTPayload;
   } catch (error) {
     console.error('Token verification failed:', error);
     return null;
@@ -85,8 +79,8 @@ export async function verifyAccessToken(token: string): Promise<JWTPayload | nul
 export async function verifyRefreshToken(token: string): Promise<JWTPayload | null> {
   try {
     const secret = await getSigningKey();
-    const { payload } = await jwt.jwtVerify(token, secret);
-    return payload as JWTPayload;
+    const { payload: decodedPayload } = await jwtVerify(token, secret);
+    return decodedPayload as any as JWTPayload;
   } catch (error) {
     console.error('Refresh token verification failed:', error);
     return null;
@@ -165,6 +159,7 @@ export async function signUp(email: string, password: string, workspaceName?: st
     }
 
     // Create workspace
+    let workspaceId: string | undefined;
     if (workspaceName && user.user) {
       const { data: workspace, error: workspaceError } = await admin
         .from('workspaces')
@@ -178,6 +173,8 @@ export async function signUp(email: string, password: string, workspaceName?: st
       if (workspaceError) {
         throw new Error(`Failed to create workspace: ${workspaceError.message}`);
       }
+
+      workspaceId = workspace?.id;
 
       // Add owner as admin
       await admin
@@ -212,7 +209,7 @@ export async function signUp(email: string, password: string, workspaceName?: st
     }
 
     // Generate tokens
-    return createTokens(user.user!.id, email, workspace?.id, 'owner');
+    return createTokens(user.user!.id, email, workspaceId, 'owner');
   } catch (error) {
     return {
       success: false,
@@ -226,10 +223,10 @@ export async function signUp(email: string, password: string, workspaceName?: st
  */
 export async function signIn(email: string, password: string): Promise<AuthResult> {
   try {
-    // Get user from Supabase
-    const { data: { user }, error } = await admin.auth.getUserByEmail({
-      email
-    });
+    // Get user from Supabase using admin listUsers
+    const { data: { users }, error } = await admin.auth.admin.listUsers();
+
+    const user = users?.find((u: any) => u.email === email);
 
     if (error || !user) {
       return {
@@ -239,9 +236,7 @@ export async function signIn(email: string, password: string): Promise<AuthResul
     }
 
     // Verify password
-    const { data: { user: authUser } } = await admin.auth.getUser(password);
-
-    if (!authUser || !(await comparePassword(password, user.user_metadata?.password_hash || ''))) {
+    if (!(await comparePassword(password, user.user_metadata?.password_hash || ''))) {
       return {
         success: false,
         error: 'Invalid credentials'
@@ -297,7 +292,7 @@ export async function getUserProfile(userId: string) {
   try {
     const { data: user } = await admin.auth.admin.getUserById(userId);
 
-    if (!user) {
+    if (!user?.user) {
       throw new Error('User not found');
     }
 
@@ -337,10 +332,16 @@ export async function getUserProfile(userId: string) {
  */
 export async function updatePassword(userId: string, currentPassword: string, newPassword: string): Promise<boolean> {
   try {
-    // Verify current password
-    const { data: { user } } = await admin.auth.getUser(currentPassword);
+    // Get user to verify current password
+    const { data: { user } } = await admin.auth.admin.getUserById(userId);
 
     if (!user) {
+      return false;
+    }
+
+    // Verify current password against stored hash
+    const isCurrentPasswordValid = await comparePassword(currentPassword, user.user_metadata?.password_hash || '');
+    if (!isCurrentPasswordValid) {
       return false;
     }
 

@@ -116,7 +116,7 @@ export async function usePaymentLink(paymentLinkId: string): Promise<void> {
   await admin
     .from('payment_links')
     .update({
-      current_uses: admin.sql`current_uses + 1`,
+      current_uses: paymentLink.current_uses + 1,
       viewed_at: new Date().toISOString()
     })
     .eq('id', paymentLinkId);

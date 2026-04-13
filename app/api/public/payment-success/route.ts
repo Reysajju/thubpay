@@ -54,10 +54,9 @@ export async function GET(request: NextRequest) {
       payment: {
         id: session.id,
         amount: session.amount_total,
-        currency: session.currency.toUpperCase(),
+        currency: session.currency?.toUpperCase() || '',
         status: session.payment_status,
-        created_at: session.created,
-        completed_at: session.payment_intent_created
+        created_at: session.created
       }
     });
   } catch (error) {

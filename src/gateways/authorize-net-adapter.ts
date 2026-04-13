@@ -22,8 +22,8 @@ export class AuthorizeNetAdapter implements GatewayAdapter {
 
   async charge(input: ChargeInput): Promise<PaymentResult> {
     try {
-      const { apiLoginId, transactionKey } = await this.getApiCredentials();
-      const transactionKey = await this.generateTransactionKey(apiLoginId, transactionKey);
+      const { apiLoginId, transactionKey: originalKey } = await this.getApiCredentials();
+      const transactionKey = await this.generateTransactionKey(apiLoginId, originalKey);
 
       const response = await fetch('https://api.authorize.net/xml/v1/request.api', {
         method: 'POST',
@@ -89,8 +89,8 @@ export class AuthorizeNetAdapter implements GatewayAdapter {
 
   async refund(transactionId: string, input: RefundInput): Promise<PaymentResult> {
     try {
-      const { apiLoginId, transactionKey } = await this.getApiCredentials();
-      const transactionKey = await this.generateTransactionKey(apiLoginId, transactionKey);
+      const { apiLoginId, transactionKey: originalKey } = await this.getApiCredentials();
+      const transactionKey = await this.generateTransactionKey(apiLoginId, originalKey);
 
       const response = await fetch('https://api.authorize.net/xml/v1/request.api', {
         method: 'POST',
@@ -156,8 +156,8 @@ export class AuthorizeNetAdapter implements GatewayAdapter {
 
   async getTransaction(transactionId: string): Promise<PaymentResult> {
     try {
-      const { apiLoginId, transactionKey } = await this.getApiCredentials();
-      const transactionKey = await this.generateTransactionKey(apiLoginId, transactionKey);
+      const { apiLoginId, transactionKey: originalKey } = await this.getApiCredentials();
+      const transactionKey = await this.generateTransactionKey(apiLoginId, originalKey);
 
       const response = await fetch('https://api.authorize.net/xml/v1/request.api', {
         method: 'POST',

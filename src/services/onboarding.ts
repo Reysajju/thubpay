@@ -107,7 +107,7 @@ export async function getNextOnboardingStep(workspaceId: string): Promise<Onboar
  * Check if onboarding is complete
  */
 export async function checkOnboardingComplete(workspaceId: string): Promise<boolean> {
-  const { data: steps } = await getOnboardingSteps(workspaceId);
+  const steps = await getOnboardingSteps(workspaceId);
 
   if (!steps || steps.length === 0) {
     return false;
@@ -130,7 +130,7 @@ export async function checkOnboardingComplete(workspaceId: string): Promise<bool
  * Get onboarding progress percentage
  */
 export async function getOnboardingProgress(workspaceId: string): Promise<number> {
-  const { data: steps } = await getOnboardingSteps(workspaceId);
+  const steps = await getOnboardingSteps(workspaceId);
 
   if (!steps || steps.length === 0) {
     return 0;

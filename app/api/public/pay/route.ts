@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
     await admin
       .from('payment_links')
       .update({
-        current_uses: admin.sql`current_uses + 1`,
+        current_uses: (paymentLink.current_uses || 0) + 1,
         last_used_at: new Date().toISOString()
       })
       .eq('id', paymentLinkId);

@@ -56,7 +56,6 @@ export class SquareAdapter implements GatewayAdapter {
             amount: amountInCents,
             currency: input.currency.toUpperCase()
           },
-          idempotency_key: `charge_${input.tenantId}_${Date.now()}`,
           remember_card: true
         })
       });

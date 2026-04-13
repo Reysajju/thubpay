@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, Download, FileText, CreditCard, DollarSign, Activity, PieChart, Users, BarChart3, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { TrendingUp, TrendingDown, Download, FileText, CreditCard, DollarSign, Activity, PieChart, Users, BarChart3, ArrowUpRight, ArrowDownRight, ArrowRight } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart as RechartsPieChart, Pie, Cell } from 'recharts';
 
 type TimeRange = '7d' | '30d' | '90d' | '1y';
@@ -39,6 +39,7 @@ interface CustomerSpend {
   email: string;
   total_spend_cents: number;
   transaction_count: number;
+  last_payment_at?: string;
 }
 
 export default function AnalyticsPage() {
@@ -201,7 +202,7 @@ export default function AnalyticsPage() {
 
           <MetricCard
             title="Failed Transactions"
-            value={totalFailed}
+            value={totalFailed.toString()}
             change={+((Math.random() * 10) - 5).toFixed(1)}
             changeLabel="vs last period"
             icon={TrendingDown}
@@ -247,7 +248,7 @@ export default function AnalyticsPage() {
                 stroke="#6B7280"
               />
               <Tooltip
-                formatter={(value: number) => formatCurrency(value)}
+                formatter={(value: any) => formatCurrency(value as number)}
                 contentStyle={{ backgroundColor: 'white', border: '1px solid #E5E7EB', borderRadius: '8px' }}
               />
               <Legend />
@@ -278,7 +279,7 @@ export default function AnalyticsPage() {
                 <XAxis dataKey="gateway" stroke="#6B7280" />
                 <YAxis tickFormatter={(value) => `$${value / 1000}K`} stroke="#6B7280" />
                 <Tooltip
-                  formatter={(value: number) => formatCurrency(value)}
+                  formatter={(value: any) => formatCurrency(value as number)}
                   contentStyle={{ backgroundColor: 'white', border: '1px solid #E5E7EB', borderRadius: '8px' }}
                 />
                 <Legend />
@@ -303,14 +304,14 @@ export default function AnalyticsPage() {
                   cy="50%"
                   innerRadius={80}
                   outerRadius={100}
-                  label={({ gateway, amount }) => `${gateway}: ${formatCurrency(amount)}`}
+                  label={({ name, value }) => `${name}: ${formatCurrency(value as number)}`}
                 >
                   {revenueByGateway.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
                 <Tooltip
-                  formatter={(value: number) => formatCurrency(value)}
+                  formatter={(value: any) => formatCurrency(value as number)}
                   contentStyle={{ backgroundColor: 'white', border: '1px solid #E5E7EB', borderRadius: '8px' }}
                 />
               </RechartsPieChart>

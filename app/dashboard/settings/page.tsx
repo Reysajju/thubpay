@@ -686,7 +686,7 @@ function BrandingSettings({ workspaceId }: { workspaceId: string }) {
   const [showSave, setShowSave] = useState(false);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setBrand(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    setBrand((prev: any) => ({ ...prev, [e.target.name]: e.target.value }));
     setShowSave(true);
   };
 
@@ -694,7 +694,7 @@ function BrandingSettings({ workspaceId }: { workspaceId: string }) {
     const file = e.target.files?.[0];
     if (file) {
       // TODO: Upload and get URL
-      setBrand(prev => ({ ...prev, logo_url: URL.createObjectURL(file) }));
+      setBrand((prev: any) => ({ ...prev, logo_url: URL.createObjectURL(file) }));
       setShowSave(true);
     }
   };

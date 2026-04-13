@@ -122,7 +122,7 @@ export async function applyPaymentToInvoice(
 ): Promise<void> {
   const { data: invoice } = await admin
     .from('invoices')
-    .select('amount_cents, balance_due_cents')
+    .select('amount_cents, balance_due_cents, status, client_id')
     .eq('id', invoiceId)
     .single();
 
@@ -164,14 +164,22 @@ export async function applyPaymentToInvoice(
   }
 
   // Update client total spend
-  await admin
+  const { data: client } = await admin
     .from('clients')
-    .update({
-      total_spend_cents: admin.sql`total_spend_cents + ${amountCents}`,
-      transaction_count: admin.sql`transaction_count + 1`,
-      last_payment_at: new Date().toISOString()
-    })
-    .eq('id', invoice.client_id);
+    .select('total_spend_cents, transaction_count')
+    .eq('id', invoice.client_id)
+    .single();
+
+  if (client) {
+    await admin
+      .from('clients')
+      .update({
+        total_spend_cents: (client.total_spend_cents || 0) + amountCents,
+        transaction_count: (client.transaction_count || 0) + 1,
+        last_payment_at: new Date().toISOString()
+      })
+      .eq('id', invoice.client_id);
+  }
 }
 
 /**

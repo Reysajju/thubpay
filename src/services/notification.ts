@@ -1,7 +1,7 @@
 import { createClient as createAdminClient } from '@supabase/supabase-js';
-import { resend } from 'resend';
+import { Resend } from 'resend';
 
-const resend = new resend(process.env.RESEND_API_KEY || '');
+const resend = new Resend(process.env.RESEND_API_KEY || '');
 
 interface NotificationPayload {
   type: 'payment_succeeded' | 'payment_failed' | 'payment_refunded' | 'invoice_paid' | 'subscription_renewed' | 'subscription_canceled' | 'invoice_created' | 'invoice_overdue';
@@ -216,7 +216,6 @@ export async function sendPaymentConfirmationEmail(
     type: 'payment_succeeded',
     title: 'Payment Received',
     message: `Your payment of ${currency} ${amount} has been received successfully.`,
-    channel: 'email',
     templateData: {
       to_email: email,
       amount,
@@ -242,7 +241,6 @@ export async function sendPaymentFailedEmail(
     type: 'payment_failed',
     title: 'Payment Failed',
     message: 'We were unable to process your payment. Please try again or use a different payment method.',
-    channel: 'email',
     templateData: {
       to_email: email,
       amount,
@@ -267,7 +265,6 @@ export async function sendRefundConfirmationEmail(
     type: 'payment_refunded',
     title: 'Refund Processed',
     message: `A refund of ${currency} ${amount} has been processed for your invoice ${invoiceId}.`,
-    channel: 'email',
     templateData: {
       to_email: email,
       amount,

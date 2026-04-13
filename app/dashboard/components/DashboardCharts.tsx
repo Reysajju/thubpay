@@ -54,7 +54,7 @@ export default function DashboardCharts({ revenueData, ledgerData, invoiceStats 
               />
               <Tooltip 
                 contentStyle={{ borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                formatter={(value: number) => [`$${value.toFixed(2)}`, 'Revenue']}
+                formatter={(value: any) => [`$${Number(value).toFixed(2)}`, 'Revenue']}
               />
               <Area 
                 type="monotone" 
@@ -131,7 +131,7 @@ export default function DashboardCharts({ revenueData, ledgerData, invoiceStats 
               <Tooltip 
                 cursor={{ fill: '#f3f4f6' }}
                 contentStyle={{ borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                formatter={(value: number) => [`$${value.toFixed(2)}`, '']}
+                formatter={(value: any) => [`$${Number(value).toFixed(2)}`, '']}
               />
               <Bar dataKey="incoming" name="Incoming" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} />
               <Bar dataKey="outgoing" name="Outgoing" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={40} />

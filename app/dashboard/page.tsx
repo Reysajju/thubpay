@@ -50,8 +50,8 @@ export default async function DashboardPage() {
       });
       member = { workspace_id: newWorkspace.id, role: 'owner' };
     } else {
-      // Emergency fallback if creation fails
-      redirect('/account');
+      // Don't redirect - let the component handle this gracefully
+      // The component will show appropriate error or placeholder
     }
   }
 

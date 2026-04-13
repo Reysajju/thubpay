@@ -1,5 +1,5 @@
 import { createClient as createAdminClient } from '@supabase/supabase-js';
-import type Stripe from 'stripe';
+import Stripe from 'stripe';
 
 const admin = createAdminClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -256,7 +256,7 @@ async function handleDisputeUpdated(dispute: Stripe.Dispute, eventId: string): P
     .update({
       reason: dispute.reason,
       status: 'under_review',
-      evidence_due_at: new Date(dispute.evidence_due_by * 1000).toISOString()
+      evidence_due_at: dispute.evidence_details?.due_by ? new Date(dispute.evidence_details.due_by * 1000).toISOString() : null
     })
     .eq('id', disputeRecord.id);
 
