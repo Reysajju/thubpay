@@ -334,9 +334,9 @@ export function getRateLimitHeaders(result: RateLimitResult): {
  * Middleware for rate limiting
  */
 export function rateLimitMiddleware(identifier: string, endpointType: string) {
-  return async (req: Request, res: Response, next: any) => {
+  return async (req: any, res: any, next: any) => {
     // Get IP address or identifier
-    const ip = req.headers['x-forwarded-for']?.toString().split(',')[0] || req.socket.remoteAddress;
+    const ip = req?.headers?.['x-forwarded-for']?.toString().split(',')[0] || req?.socket?.remoteAddress || 'unknown';
     const limitResult = await enforceRateLimit(ip, endpointType);
 
     if (limitResult) {

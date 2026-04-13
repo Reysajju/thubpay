@@ -313,13 +313,21 @@ export async function handleSuccessfulSubscriptionPayment(subscriptionId: string
 async function sendDunningEmail(clientId: string, subscriptionId: string): Promise<void> {
   const { data: subscription } = await admin
     .from('subscriptions')
-    .select('client_id, plan_id')
+    .select('client_id, plan_id, metadata')
     .eq('id', subscriptionId)
     .single();
 
   if (!subscription) return;
 
-  const dunningAttempts = (subscription.metadata?.dunning_attempts as number) || 0;
+  const dunningAttempts = ((subscription.metadata as any)?.dunning_attempts as number) || 0;
+
+  const { data: plan } = await admin
+    .from('subscription_plans')
+    .select('amount_cents, currency')
+    .eq('id', subscription.plan_id)
+    .single();
+
+  if (!plan) return;
 
   if (dunningAttempts >= 3) {
     // Final dunning email - cancel subscription

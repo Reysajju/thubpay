@@ -1,5 +1,6 @@
 import { Queue, Worker, Job } from 'bullmq';
 import Redis from 'ioredis';
+import { sendPaymentConfirmationEmail, sendPaymentFailedEmail, sendRefundConfirmationEmail } from '../services/notification';
 
 // Redis connection
 const redisConnection = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
@@ -55,8 +56,7 @@ const webhookWorker = new Worker(
       return { success: true };
     } catch (error) {
       console.error(`Error processing webhook ${eventType}:`, error);
-      // Mark job as failed
-      await job.fail(error);
+      console.error(`Error processing webhook ${eventType}:`, error);
 
       // Update webhook job status
       const admin = getAdminClient();
@@ -127,7 +127,6 @@ const invoiceWorker = new Worker(
       return { success: true };
     } catch (error) {
       console.error(`Error processing invoice ${invoiceId}:`, error);
-      await job.fail(error);
       throw error;
     }
   },
@@ -158,7 +157,6 @@ const emailWorker = new Worker(
       return { success: true };
     } catch (error) {
       console.error('Error sending email:', error);
-      await job.fail(error);
 
       // Queue for retry
       await retryQueue.add('email_retry', {
@@ -214,10 +212,9 @@ const retryWorker = new Worker(
     } catch (error) {
       console.error(`Error retrying task ${type}:`, error);
 
-      // If this was the last attempt, mark as failed permanently
       if (retryCount >= 2) {
-        await job.moveToFailed({ message: 'Max retries exceeded' });
-        await markTaskFailedPermanently(taskId, type, error);
+        await markTaskFailedPermanently(taskId, type, error as Error);
+        throw new Error('Max retries exceeded');
       } else {
         // Queue for another retry
         await retryQueue.add(type, {
@@ -251,7 +248,6 @@ function getAdminClient() {
   return {
     from: (table: string) => ({
       select: () => ({
-        single: () => Promise.resolve({ data: null, error: null }),
         single: () => Promise.resolve({ data: null, error: null }),
         insert: () => ({
           select: () => ({
@@ -372,11 +368,18 @@ async function handlePaymentSucceeded(eventId: string, payload: any): Promise<vo
       .eq('id', transaction.invoice_id);
 
     // Update client total spend
-    await (admin as any).from('clients')
-      .update({
-        total_spend_cents: admin.sql`total_spend_cents + ${transaction.amount_cents}`
-      })
-      .eq('id', transaction.client_id);
+    const { data: clientData } = await (admin as any).from('clients')
+      .select('total_spend_cents')
+      .eq('id', transaction.client_id)
+      .single();
+    
+    if (clientData) {
+      await (admin as any).from('clients')
+        .update({
+          total_spend_cents: (clientData.total_spend_cents || 0) + transaction.amount_cents
+        })
+        .eq('id', transaction.client_id);
+    }
 
     // Notify payer
     await sendPaymentConfirmationEmail(

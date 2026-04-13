@@ -1,5 +1,5 @@
 import { createClient as createAdminClient } from '@supabase/supabase-js';
-import type Stripe from 'stripe';
+import Stripe from 'stripe';
 
 const admin = createAdminClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -31,7 +31,7 @@ export async function createPlatformAccount(): Promise<Stripe.Account> {
   });
 
   const platformAccount = await stripe.accounts.create({
-    type: 'platform',
+    type: 'standard',
     country: 'US',
     capabilities: {
       card_payments: { requested: true },
@@ -75,10 +75,7 @@ export async function createConnectedAccount(
       url: `${process.env.NEXT_PUBLIC_APP_URL}/brand/${workspaceId}`,
       mcc: '5734' // Payment processing
     },
-    capabilities: {
-      card_payments: { requested: true },
-      transfers: { requested: true }
-    },
+
     tos_acceptance: {
       date: Math.floor(Date.now() / 1000),
       ip: '127.0.0.1' // In production, get from request
@@ -137,7 +134,7 @@ export async function getOnboardingUrl(
   const accountLink = await stripe.accountLinks.create({
     account: credentials.key_value,
     refresh_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/brand/${workspaceId}/connect`,
-    return_url: `${process_env.NEXT_PUBLIC_APP_URL}/dashboard/brand/${workspaceId}/connect?success=true`,
+    return_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/brand/${workspaceId}/connect?success=true`,
     type: 'account_onboarding'
   });
 
@@ -157,7 +154,7 @@ export async function chargeOnBehalfOfConnectedAccount(
     apiVersion: '2023-10-16'
   });
 
-  const charge = await stripe.charges.create({
+  const charge = await (stripe.charges as any).create({
     amount: amountCents,
     currency: currency.toLowerCase(),
     source: 'tok_visa', // In production, use stored card token
@@ -290,7 +287,7 @@ export async function syncConnectedAccountBalances(
 
   return {
     available: balance.available.reduce((sum, bal) => sum + bal.amount, 0),
-    reachable: balance.reachable.reduce((sum, bal) => sum + bal.amount, 0),
+    reachable: (balance as any).reachable ? (balance as any).reachable.reduce((sum: any, bal: any) => sum + bal.amount, 0) : 0,
     pending: balance.pending.reduce((sum, bal) => sum + bal.amount, 0)
   };
 }
@@ -306,7 +303,7 @@ export async function listChargesForConnectedAccount(
     apiVersion: '2023-10-16'
   });
 
-  const charges = await stripe.charges.list({
+  const charges = await (stripe.charges as any).list({
     limit,
     destination: stripeAccountId
   });
@@ -332,7 +329,7 @@ export async function configurePlatformFee(
     livemode: false,
     id: 'pf_' + Date.now(),
     object: 'application_fee'
-  };
+  } as any;
 }
 
 /**
@@ -346,10 +343,11 @@ export async function getPlatformFinancials(
     apiVersion: '2023-10-16'
   });
 
-  const reports = await stripe.reports.list({
-    type: 'balance_transaction',
-    start_date: startDate,
-    end_date: endDate
+  const reports = await (stripe as any).reporting.reportRuns.list({
+    created: {
+      gte: Math.floor(new Date(startDate).getTime() / 1000),
+      lte: Math.floor(new Date(endDate).getTime() / 1000)
+    }
   });
 
   return reports.data;

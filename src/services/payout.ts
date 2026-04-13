@@ -1,5 +1,5 @@
 import { createClient as createAdminClient } from '@supabase/supabase-js';
-import { webhooks } from 'stripe';
+
 
 const admin = createAdminClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -242,7 +242,7 @@ export async function updatePayoutSettings(data: {
   minimumAmountCents: number;
   isActive: boolean;
 }): Promise<void> {
-  const { data, error } = await admin
+  const { data: updatedSettings, error } = await admin
     .from('payout_settings')
     .upsert({
       workspace_id: data.workspaceId,
@@ -361,14 +361,18 @@ export async function scheduleAutomaticPayouts(): Promise<void> {
  * Handle payout success webhook
  */
 export async function handlePayoutSuccess(payoutId: string, gatewayPayoutId: string): Promise<void> {
-  await admin
+  const { data: payout } = await admin
     .from('payouts')
     .update({
       status: 'paid',
       gateway_payout_id: gatewayPayoutId,
       processed_at: new Date().toISOString()
     })
-    .eq('id', payoutId);
+    .eq('id', payoutId)
+    .select('amount_cents, workspace_id')
+    .single();
+
+  if (!payout) return;
 
   // Notify workspace owner
   await admin
@@ -376,10 +380,9 @@ export async function handlePayoutSuccess(payoutId: string, gatewayPayoutId: str
     .insert({
       type: 'payout_completed',
       title: 'Payout Completed',
-      message: `Your payout of ${amountCents / 100} has been processed successfully.`,
+      message: `Your payout of ${(payout.amount_cents || 0) / 100} has been processed successfully.`,
       channel: 'in_app',
-      workspace_id: '', // Get from context
-      user_id: '', // Get from context
+      workspace_id: payout.workspace_id,
       metadata: { payout_id: payoutId }
     });
 }
