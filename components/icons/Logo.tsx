@@ -1,43 +1,35 @@
-const Logo = ({ ...props }) => (
-  <svg
-    width="36"
-    height="36"
-    viewBox="0 0 36 36"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-    {...props}
-  >
-    <defs>
-      <linearGradient id="thubpay-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stopColor="#7A5A2B" />
-        <stop offset="100%" stopColor="#D4B27A" />
-      </linearGradient>
-    </defs>
-    {/* Background circle */}
-    <rect width="36" height="36" rx="10" fill="url(#thubpay-grad)" />
-    {/* T letterform */}
-    <text
-      x="18"
-      y="27"
-      textAnchor="middle"
-      fontFamily="'Inter', 'Helvetica Neue', sans-serif"
-      fontWeight="800"
-      fontSize="22"
-      fill="white"
-      letterSpacing="-1"
-    >
-      T
-    </text>
-    {/* Payment arc */}
-    <path
-      d="M8 28 Q18 34 28 28"
-      stroke="white"
-      strokeWidth="2"
-      strokeLinecap="round"
-      fill="none"
-      opacity="0.7"
-    />
-  </svg>
-);
+const GOLD = '#C5A059';
 
-export default Logo;
+type LogoProps = {
+  iconOnly?: boolean;
+  iconSize?: number;
+  className?: string;
+};
+
+/** Brand mark: gold emblem + THUB (slate) / PAY (gold) wordmark for dark UI. */
+export default function Logo({
+  iconOnly = false,
+  iconSize = 36,
+  className = ''
+}: LogoProps) {
+  return (
+    <div className={`flex items-center gap-2 group shrink-0 ${className}`}>
+      <div 
+        className="relative overflow-hidden rounded-lg transition-transform group-hover:scale-105 duration-200"
+        style={{ width: iconSize, height: iconSize }}
+      >
+        <img
+          src="/thubpay-logo.png"
+          alt="ThubPay Logo"
+          className="w-full h-full object-contain"
+        />
+      </div>
+      {!iconOnly && (
+        <span className="font-bold tracking-tight select-none leading-none text-lg transition-colors group-hover:text-white">
+          <span className="text-zinc-400">THUB</span>
+          <span style={{ color: GOLD }}>PAY</span>
+        </span>
+      )}
+    </div>
+  );
+}

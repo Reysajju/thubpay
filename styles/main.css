@@ -1,15 +1,24 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800&family=Inter:wght@300;400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --thubpay-violet: #7a5a2b;
-  --thubpay-cyan: #d4b27a;
-  --thubpay-dark: #f7f4ef;
-  --thubpay-surface: #fffdf8;
-  --thubpay-border: #e7e0d3;
+  --tp-obsidian: #111111;
+  --tp-gold: #c5a059;
+  --tp-slate: #555555;
+  --tp-blue: #0a6c7b;
+  --tp-surface: #161616;
+  --tp-border: #2d2d2d;
+  --tp-text: #f5f5f5;
+  --tp-text-muted: #a3a3a3;
+  /* Legacy names → map to brand */
+  --thubpay-violet: #c5a059;
+  --thubpay-cyan: #0a6c7b;
+  --thubpay-dark: #111111;
+  --thubpay-surface: #161616;
+  --thubpay-border: #2d2d2d;
 }
 
 *,
@@ -19,7 +28,7 @@
 }
 
 *:focus:not(ol) {
-  @apply outline-none ring-2 ring-thubpay-violet ring-opacity-50;
+  @apply outline-none ring-2 ring-[#C5A059] ring-opacity-60;
 }
 
 html {
@@ -35,6 +44,7 @@ html {
 html,
 body {
   font-family:
+    'Montserrat',
     'Inter',
     -apple-system,
     system-ui,
@@ -45,14 +55,20 @@ body {
   text-rendering: optimizeLegibility;
   -moz-osx-font-smoothing: grayscale;
   -webkit-font-smoothing: antialiased;
-  background-color: var(--thubpay-dark);
-  color: #1d1b24;
+  background-color: var(--tp-obsidian);
+  color: var(--tp-text);
 }
 
 body {
   position: relative;
   min-height: 100%;
   margin: 0;
+}
+
+img,
+video {
+  max-width: 100%;
+  height: auto;
 }
 
 a {
@@ -63,17 +79,17 @@ p a {
   @apply hover:underline;
 }
 
-/* ── ThubPay gradient text ─────────────────────────── */
+/* ── Brand gradient headline ───────────────────────── */
 .gradient-text {
-  background: linear-gradient(135deg, #7a5a2b 0%, #d4b27a 100%);
+  background: linear-gradient(135deg, #c5a059 0%, #e8d5a8 45%, #0a6c7b 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-/* ── Gradient button ───────────────────────────────── */
+/* ── Primary CTA (Rich Gold) ─────────────────────── */
 .btn-gradient {
-  background: linear-gradient(135deg, #7a5a2b 0%, #d4b27a 100%);
+  background: linear-gradient(135deg, #c5a059 0%, #a68447 100%);
   background-size: 200% 100%;
   transition:
     background-position 0.4s ease,
@@ -84,64 +100,64 @@ p a {
 .btn-gradient:hover {
   background-position: right center;
   transform: translateY(-1px);
-  box-shadow: 0 10px 30px rgba(122, 90, 43, 0.35);
+  box-shadow: 0 10px 32px rgba(197, 160, 89, 0.4);
 }
 
-/* ── Glass card ────────────────────────────────────── */
+/* ── Glass panels (dark) ───────────────────────────── */
 .glass-card {
-  background: rgba(255, 253, 248, 0.85);
-  border: 1px solid rgba(231, 224, 211, 0.85);
+  background: rgba(22, 22, 22, 0.82);
+  border: 1px solid rgba(45, 45, 45, 0.95);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
+  color: #e5e5e5;
 }
 
 .glass-card:hover {
-  border-color: rgba(108, 92, 231, 0.4);
-  box-shadow: 0 20px 60px rgba(108, 92, 231, 0.15);
+  border-color: rgba(197, 160, 89, 0.45);
+  box-shadow: 0 20px 60px rgba(197, 160, 89, 0.12);
   transform: translateY(-2px);
   transition: all 0.3s ease;
 }
 
-/* ── Shimmer animation ─────────────────────────────── */
+/* ── Shimmer ───────────────────────────────────────── */
 .shimmer {
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(108, 92, 231, 0.3) 50%,
+    rgba(197, 160, 89, 0.25) 50%,
     transparent 100%
   );
   background-size: 200% 100%;
   animation: shimmer 2.5s linear infinite;
 }
 
-/* ── Grid background pattern ───────────────────────── */
+/* ── Grid on obsidian ─────────────────────────────── */
 .bg-grid {
   background-image: linear-gradient(
-      rgba(231, 224, 211, 0.65) 1px,
+      rgba(197, 160, 89, 0.07) 1px,
       transparent 1px
     ),
-    linear-gradient(90deg, rgba(231, 224, 211, 0.65) 1px, transparent 1px);
+    linear-gradient(90deg, rgba(197, 160, 89, 0.07) 1px, transparent 1px);
   background-size: 48px 48px;
 }
 
-/* ── Animated glow orb ─────────────────────────────── */
+/* ── Glow orbs ─────────────────────────────────────── */
 .glow-orb {
   position: absolute;
   border-radius: 50%;
   filter: blur(80px);
-  opacity: 0.4;
+  opacity: 0.35;
   animation: pulse-glow 3s ease-in-out infinite;
 }
 
-/* ── Pricing card highlight border ────────────────── */
+/* ── Pricing featured ─────────────────────────────── */
 .pricing-featured {
-  border: 1px solid rgba(108, 92, 231, 0.6);
+  border: 1px solid rgba(197, 160, 89, 0.55);
   box-shadow:
-    0 0 0 1px rgba(108, 92, 231, 0.2),
-    0 20px 60px rgba(108, 92, 231, 0.2);
+    0 0 0 1px rgba(197, 160, 89, 0.12),
+    0 20px 60px rgba(197, 160, 89, 0.18);
 }
 
-/* ── Smooth transitions ────────────────────────────── */
 .animated {
   -webkit-animation-duration: 1s;
   animation-duration: 1s;
@@ -153,20 +169,19 @@ p a {
   min-height: calc(100vh - 80px);
 }
 
-/* ── Scrollbar ─────────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f0eadf;
+  background: #1a1a1a;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--thubpay-border);
+  background: #3d3d3d;
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--thubpay-violet);
+  background: var(--tp-gold);
 }

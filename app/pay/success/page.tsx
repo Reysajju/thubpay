@@ -72,37 +72,37 @@ export default function PaymentSuccessPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+      <div className="min-h-screen bg-thubpay-obsidian flex items-center justify-center">
         <div className="text-center">
-          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-600">Verifying your payment...</p>
+          <div className="w-12 h-12 border-4 border-thubpay-gold border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-zinc-400">Verifying your payment...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+    <div className="min-h-screen bg-thubpay-obsidian">
       <div className="max-w-lg mx-auto px-4 py-12">
-        <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
+        <div className="bg-thubpay-surface border border-thubpay-border rounded-2xl shadow-xl overflow-hidden">
           {/* Success Header */}
-          <div className="bg-green-50 px-6 py-8 text-center">
-            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <CheckCircle2 className="w-10 h-10 text-green-600" />
+          <div className="bg-green-500/10 px-6 py-8 text-center border-b border-thubpay-border">
+            <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4 border border-green-500/30">
+              <CheckCircle2 className="w-10 h-10 text-green-400" />
             </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Payment Successful!</h1>
-            <p className="text-green-700">Thank you for your payment</p>
+            <h1 className="text-3xl font-bold text-white mb-2">Payment Successful!</h1>
+            <p className="text-green-300">Thank you for your payment</p>
           </div>
 
           {/* Payment Details */}
           <div className="p-8">
             <div className="space-y-4 mb-8">
-              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+              <div className="flex items-center justify-between p-4 bg-thubpay-elevated rounded-lg border border-thubpay-border">
                 <div className="flex items-center gap-3">
-                  <CreditCard className="w-5 h-5 text-gray-600" />
+                  <CreditCard className="w-5 h-5 text-thubpay-gold" />
                   <div>
-                    <p className="text-sm text-gray-500">Payment Amount</p>
-                    <p className="text-xl font-bold text-gray-900">
+                    <p className="text-sm text-zinc-500">Payment Amount</p>
+                    <p className="text-xl font-bold text-white">
                       {formatAmount(payment?.amount)}
                     </p>
                   </div>
@@ -110,25 +110,25 @@ export default function PaymentSuccessPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-gray-50 rounded-lg">
-                  <p className="text-sm text-gray-500 mb-1">Payment Method</p>
-                  <p className="font-medium text-gray-900">
+                <div className="p-4 bg-thubpay-elevated rounded-lg border border-thubpay-border">
+                  <p className="text-sm text-zinc-500 mb-1">Payment Method</p>
+                  <p className="font-medium text-zinc-100">
                     {payment?.gateway === 'stripe' ? 'Credit Card' : 'Card'}
                   </p>
                 </div>
-                <div className="p-4 bg-gray-50 rounded-lg">
-                  <p className="text-sm text-gray-500 mb-1">Transaction ID</p>
-                  <p className="font-mono text-sm text-gray-900 break-all">
+                <div className="p-4 bg-thubpay-elevated rounded-lg border border-thubpay-border">
+                  <p className="text-sm text-zinc-500 mb-1">Transaction ID</p>
+                  <p className="font-mono text-sm text-zinc-200 break-all">
                     {payment?.stripe_payment_intent}
                   </p>
                 </div>
               </div>
 
               {payment?.amount_details?.tax && (
-                <div className="p-4 bg-gray-50 rounded-lg">
+                <div className="p-4 bg-thubpay-elevated rounded-lg border border-thubpay-border">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-500">Tax</span>
-                    <span className="font-medium text-gray-900">
+                    <span className="text-sm text-zinc-500">Tax</span>
+                    <span className="font-medium text-zinc-100">
                       {formatAmount(payment.amount_details.tax)}
                     </span>
                   </div>
@@ -136,10 +136,10 @@ export default function PaymentSuccessPage() {
               )}
 
               {payment?.amount_details?.shipping && (
-                <div className="p-4 bg-gray-50 rounded-lg">
+                <div className="p-4 bg-thubpay-elevated rounded-lg border border-thubpay-border">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-500">Shipping</span>
-                    <span className="font-medium text-gray-900">
+                    <span className="text-sm text-zinc-500">Shipping</span>
+                    <span className="font-medium text-zinc-100">
                       {formatAmount(payment.amount_details.shipping)}
                     </span>
                   </div>
@@ -147,16 +147,16 @@ export default function PaymentSuccessPage() {
               )}
             </div>
 
-            <div className="p-4 bg-blue-50 border border-blue-100 rounded-lg mb-8">
-              <p className="text-sm text-blue-800">
-                <strong>Receipt:</strong> Your payment has been processed successfully. A copy of this receipt has been sent to your email.
+            <div className="p-4 bg-thubpay-blue/15 border border-thubpay-blue/30 rounded-lg mb-8">
+              <p className="text-sm text-zinc-200">
+                <strong className="text-thubpay-gold">Receipt:</strong> Your payment has been processed successfully. A copy of this receipt has been sent to your email.
               </p>
             </div>
 
             <div className="space-y-3">
               <button
                 onClick={handleShare}
-                className="w-full py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors flex items-center justify-center gap-2"
+                className="w-full py-3 bg-thubpay-elevated text-zinc-200 rounded-lg font-medium border border-thubpay-border hover:border-thubpay-gold transition-colors flex items-center justify-center gap-2"
               >
                 <RefreshCw className="w-5 h-5" />
                 Share Receipt
@@ -164,7 +164,7 @@ export default function PaymentSuccessPage() {
 
               <a
                 href="/dashboard"
-                className="w-full py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                className="btn-gradient w-full py-3 text-[#111] rounded-lg font-semibold transition-colors flex items-center justify-center gap-2"
               >
                 <Home className="w-5 h-5" />
                 Back to Dashboard

@@ -1,4 +1,4 @@
-import { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import Footer from '@/components/ui/Footer';
 import Navbar from '@/components/ui/Navbar';
 import { Toaster } from '@/components/ui/Toasts/toaster';
@@ -8,21 +8,26 @@ import 'styles/main.css';
 
 const title = 'ThubPay - Modern Payment Portal for Startups';
 const description =
-  'ThubPay is a modern payment portal for startups. Launch secure checkout, subscriptions, and global payments with a bright, premium, answer-engine-optimized platform.';
+  'ThubPay is a payment portal for startups: secure checkout, subscriptions, invoices, payment links, and workspace analytics—backed by Stripe and enterprise-grade auth.';
 const siteUrl = getURL();
 const brandName = 'ThubPay';
 const seoKeywords = [
   'ThubPay',
   'payment portal',
-  'payment portal for startups',
-  'modern payment portal',
-  'modern payment portal for startups',
-  'modren payment portal',
-  'modren payment portal for startups',
-  'startup billing platform',
-  'SaaS payment portal',
-  'secure payment portal'
+  'startup billing',
+  'Stripe checkout',
+  'subscription billing',
+  'invoice payments',
+  'payment links',
+  'SaaS payments',
+  'payment dashboard'
 ];
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#111111'
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -124,7 +129,6 @@ export default async function RootLayout({ children }: PropsWithChildren) {
   return (
     <html lang="en">
       <head>
-        <meta name="theme-color" content="#f7f4ef" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
           rel="preconnect"
@@ -132,7 +136,7 @@ export default async function RootLayout({ children }: PropsWithChildren) {
           crossOrigin="anonymous"
         />
         <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800&family=Inter:wght@400;500;600;700&display=swap"
           rel="stylesheet"
         />
         <script
@@ -140,11 +144,11 @@ export default async function RootLayout({ children }: PropsWithChildren) {
           dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
         />
       </head>
-      <body className="bg-[#f7f4ef] text-[#1d1b24]">
+      <body className="bg-thubpay-obsidian text-zinc-100 overflow-x-hidden antialiased">
         <Navbar />
         <main
           id="skip"
-          className="min-h-[calc(100dvh-4rem)] md:min-h[calc(100dvh-5rem)]"
+          className="min-h-[calc(100dvh-4rem)] md:min-h-[calc(100dvh-5rem)] min-w-0"
         >
           {children}
         </main>

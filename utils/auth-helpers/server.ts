@@ -2,7 +2,6 @@
 
 import { createClient } from '@/utils/supabase/server';
 import { cookies } from 'next/headers';
-import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getURL, getErrorRedirect, getStatusRedirect } from 'utils/helpers';
 import { getAuthTypes } from 'utils/auth-helpers/settings';
@@ -10,14 +9,6 @@ import { getAuthTypes } from 'utils/auth-helpers/settings';
 function isValidEmail(email: string) {
   var regex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}$/;
   return regex.test(email);
-}
-
-function getRequestOrigin() {
-  const h = headers();
-  const proto = h.get('x-forwarded-proto') ?? 'http';
-  const host = h.get('x-forwarded-host') ?? h.get('host');
-  if (host) return `${proto}://${host}`;
-  return getURL();
 }
 
 export async function redirectToPath(path: string) {
@@ -43,7 +34,7 @@ export async function SignOut(formData: FormData) {
 
 export async function signInWithEmail(formData: FormData) {
   const cookieStore = cookies();
-  const callbackURL = `${getRequestOrigin()}/auth/callback`;
+  const callbackURL = getURL('/auth/callback');
 
   const email = String(formData.get('email')).trim();
   let redirectPath: string;
@@ -96,7 +87,7 @@ export async function signInWithEmail(formData: FormData) {
 }
 
 export async function requestPasswordUpdate(formData: FormData) {
-  const callbackURL = `${getRequestOrigin()}/auth/reset_password`;
+  const callbackURL = getURL('/auth/reset_password');
 
   // Get form data
   const email = String(formData.get('email')).trim();
@@ -173,7 +164,7 @@ export async function signInWithPassword(formData: FormData) {
 }
 
 export async function signUp(formData: FormData) {
-  const callbackURL = `${getRequestOrigin()}/auth/callback`;
+  const callbackURL = getURL('/auth/callback');
 
   const email = String(formData.get('email')).trim();
   const password = String(formData.get('password')).trim();

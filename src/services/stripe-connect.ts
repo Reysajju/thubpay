@@ -1,5 +1,6 @@
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
+import { getURL } from '@/utils/helpers';
 
 const admin = createAdminClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -39,7 +40,7 @@ export async function createPlatformAccount(): Promise<Stripe.Account> {
     },
     business_type: 'company',
     business_profile: {
-      url: process.env.NEXT_PUBLIC_APP_URL || 'https://app.thubpay.com'
+      url: getURL()
     }
   });
 
@@ -72,7 +73,7 @@ export async function createConnectedAccount(
     },
     business_type: 'company',
     business_profile: {
-      url: `${process.env.NEXT_PUBLIC_APP_URL}/brand/${workspaceId}`,
+      url: getURL(`brand/${workspaceId}`),
       mcc: '5734' // Payment processing
     },
 
@@ -85,8 +86,8 @@ export async function createConnectedAccount(
   // Generate account onboarding URL
   const accountLink = await stripe.accountLinks.create({
     account: connectedAccount.id,
-    refresh_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/brand/${workspaceId}/connect`,
-    return_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/brand/${workspaceId}/connect?success=true`,
+    refresh_url: getURL(`dashboard/brand/${workspaceId}/connect`),
+    return_url: `${getURL(`dashboard/brand/${workspaceId}/connect`)}?success=true`,
     type: 'account_onboarding'
   });
 
@@ -133,8 +134,8 @@ export async function getOnboardingUrl(
 
   const accountLink = await stripe.accountLinks.create({
     account: credentials.key_value,
-    refresh_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/brand/${workspaceId}/connect`,
-    return_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/brand/${workspaceId}/connect?success=true`,
+    refresh_url: getURL(`dashboard/brand/${workspaceId}/connect`),
+    return_url: `${getURL(`dashboard/brand/${workspaceId}/connect`)}?success=true`,
     type: 'account_onboarding'
   });
 

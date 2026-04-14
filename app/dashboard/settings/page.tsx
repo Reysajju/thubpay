@@ -27,12 +27,12 @@ export default function SettingsPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-thubpay-obsidian">
       {/* Header */}
-      <div className="bg-white shadow-sm border-b border-gray-200">
+      <div className="bg-thubpay-surface shadow-sm border-b border-thubpay-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-          <p className="mt-1 text-sm text-gray-600">
+          <h1 className="text-2xl font-bold text-white">Settings</h1>
+          <p className="mt-1 text-sm text-zinc-400">
             Manage your account settings and preferences
           </p>
         </div>
@@ -42,7 +42,7 @@ export default function SettingsPage() {
         <div className="flex gap-8">
           {/* Sidebar */}
           <div className="w-64 flex-shrink-0">
-            <nav className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <nav className="bg-thubpay-surface rounded-lg shadow-sm border border-thubpay-border p-4">
               {tabs.map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
@@ -52,8 +52,8 @@ export default function SettingsPage() {
                     onClick={() => setActiveTab(tab.id)}
                     className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                       isActive
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'text-gray-700 hover:bg-gray-50'
+                        ? 'bg-thubpay-gold/10 text-thubpay-gold'
+                        : 'text-zinc-300 hover:bg-thubpay-elevated'
                     }`}
                   >
                     <Icon className="w-5 h-5" />
@@ -130,14 +130,14 @@ function GatewaySettings({ workspaceId }: { workspaceId: string }) {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="bg-thubpay-surface rounded-lg shadow-sm border border-thubpay-border p-6">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className="text-lg font-semibold text-white">
             Connected Payment Gateways
           </h2>
           <button
             onClick={() => setShowAddGateway(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 btn-gradient text-[#111] rounded-lg hover:opacity-95 transition-colors"
           >
             <Plus className="w-4 h-4" />
             Add Gateway
@@ -146,14 +146,14 @@ function GatewaySettings({ workspaceId }: { workspaceId: string }) {
 
         <div className="space-y-4">
           {gateways.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              <AlertCircle className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+            <div className="text-center py-12 text-zinc-500">
+              <AlertCircle className="w-12 h-12 mx-auto mb-4 text-zinc-500" />
               <p>No gateways connected yet</p>
               <p className="text-sm mt-2">Click "Add Gateway" to connect a payment service</p>
             </div>
           ) : (
             gateways.map((gateway) => (
-              <div key={gateway.id} className="border border-gray-200 rounded-lg p-4">
+              <div key={gateway.id} className="border border-thubpay-border rounded-lg p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     <div
@@ -166,10 +166,10 @@ function GatewaySettings({ workspaceId }: { workspaceId: string }) {
                       />
                     </div>
                     <div>
-                      <h3 className="font-medium text-gray-900">
+                      <h3 className="font-medium text-white">
                         {gateway.gateway_slug.charAt(0).toUpperCase() + gateway.gateway_slug.slice(1)}
                       </h3>
-                      <p className="text-sm text-gray-500">
+                      <p className="text-sm text-zinc-500">
                         {gateway.key_type}
                       </p>
                     </div>
@@ -178,8 +178,8 @@ function GatewaySettings({ workspaceId }: { workspaceId: string }) {
                     <span
                       className={`px-2.5 py-1 rounded-full text-xs font-medium ${
                         gateway.mode === 'live'
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-yellow-100 text-yellow-700'
+                          ? 'bg-green-500/15 text-green-400'
+                          : 'bg-yellow-500/15 text-yellow-300'
                       }`}
                     >
                       {gateway.mode.toUpperCase()}
@@ -198,7 +198,7 @@ function GatewaySettings({ workspaceId }: { workspaceId: string }) {
       {/* Add Gateway Modal */}
       {showAddGateway && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4">
+          <div className="bg-thubpay-surface rounded-lg shadow-xl max-w-lg w-full mx-4">
             <div className="p-6">
               <h3 className="text-lg font-semibold mb-4">Add Payment Gateway</h3>
               <div className="grid grid-cols-2 gap-3 mb-6">
@@ -208,8 +208,8 @@ function GatewaySettings({ workspaceId }: { workspaceId: string }) {
                     onClick={() => setSelectedGateway(gateway)}
                     className={`flex items-center gap-2 p-3 border-2 rounded-lg transition-colors ${
                       selectedGateway === gateway
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'border-gray-200 hover:border-gray-300'
+                        ? 'border-thubpay-gold bg-thubpay-gold/10'
+                        : 'border-thubpay-border hover:border-thubpay-border'
                     }`}
                   >
                     <div
@@ -228,39 +228,39 @@ function GatewaySettings({ workspaceId }: { workspaceId: string }) {
               {selectedGateway && (
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-zinc-300 mb-1">
                       API Key
                     </label>
                     <input
                       type="password"
                       placeholder="Enter your API key"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full px-3 py-2 border border-thubpay-border rounded-lg focus:ring-2 focus:ring-thubpay-gold focus:border-thubpay-gold"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-zinc-300 mb-1">
                       Secret Key
                     </label>
                     <input
                       type="password"
                       placeholder="Enter your secret key"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full px-3 py-2 border border-thubpay-border rounded-lg focus:ring-2 focus:ring-thubpay-gold focus:border-thubpay-gold"
                     />
                   </div>
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
                       id="testMode"
-                      className="rounded border-gray-300"
+                      className="rounded border-thubpay-border"
                     />
-                    <label htmlFor="testMode" className="text-sm text-gray-700">
+                    <label htmlFor="testMode" className="text-sm text-zinc-300">
                       Use test mode
                     </label>
                   </div>
                   <div className="flex gap-3">
                     <button
                       onClick={() => setShowAddGateway(false)}
-                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                      className="flex-1 px-4 py-2 border border-thubpay-border rounded-lg hover:bg-thubpay-elevated transition-colors"
                     >
                       Cancel
                     </button>
@@ -269,7 +269,7 @@ function GatewaySettings({ workspaceId }: { workspaceId: string }) {
                         // TODO: Call API to add gateway
                         setShowAddGateway(false);
                       }}
-                      className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                      className="flex-1 px-4 py-2 btn-gradient text-[#111] rounded-lg hover:opacity-95 transition-colors"
                     >
                       Connect Gateway
                     </button>
@@ -301,14 +301,14 @@ function APIKeySettings({ workspaceId }: { workspaceId: string }) {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="bg-thubpay-surface rounded-lg shadow-sm border border-thubpay-border p-6">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className="text-lg font-semibold text-white">
             API Keys
           </h2>
           <button
             onClick={() => setShowNewKey(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 btn-gradient text-[#111] rounded-lg hover:opacity-95 transition-colors"
           >
             <Plus className="w-4 h-4" />
             Generate New Key
@@ -317,26 +317,26 @@ function APIKeySettings({ workspaceId }: { workspaceId: string }) {
 
         <div className="space-y-4">
           {apiKeys.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              <Key className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+            <div className="text-center py-12 text-zinc-500">
+              <Key className="w-12 h-12 mx-auto mb-4 text-zinc-500" />
               <p>No API keys created yet</p>
               <p className="text-sm mt-2">Generate API keys to integrate programmatically</p>
             </div>
           ) : (
             apiKeys.map((apiKey) => (
-              <div key={apiKey.id} className="border border-gray-200 rounded-lg p-4">
+              <div key={apiKey.id} className="border border-thubpay-border rounded-lg p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-medium text-gray-900">{apiKey.name}</h3>
+                  <h3 className="font-medium text-white">{apiKey.name}</h3>
                   <div className="flex items-center gap-3">
-                    <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700">
+                    <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-400">
                       Revoke
                     </Button>
                   </div>
                 </div>
-                <div className="font-mono text-sm bg-gray-100 p-2 rounded mb-2">
+                <div className="font-mono text-sm bg-thubpay-elevated p-2 rounded mb-2">
                   {apiKey.key_value.substring(0, 20)}...{apiKey.key_value.substring(apiKey.key_value.length - 20)}
                 </div>
-                <div className="flex items-center justify-between text-sm text-gray-500">
+                <div className="flex items-center justify-between text-sm text-zinc-500">
                   <span>Created: {new Date(apiKey.created_at).toLocaleDateString()}</span>
                   <span>Permissions: {apiKey.permissions.join(', ')}</span>
                 </div>
@@ -349,12 +349,12 @@ function APIKeySettings({ workspaceId }: { workspaceId: string }) {
       {/* New Key Modal */}
       {showNewKey && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4">
+          <div className="bg-thubpay-surface rounded-lg shadow-xl max-w-lg w-full mx-4">
             <div className="p-6">
               <h3 className="text-lg font-semibold mb-4">Generate API Key</h3>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-zinc-300 mb-1">
                     Key Name
                   </label>
                   <input
@@ -362,11 +362,11 @@ function APIKeySettings({ workspaceId }: { workspaceId: string }) {
                     placeholder="e.g., Production Key"
                     value={newKeyName}
                     onChange={(e) => setNewKeyName(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-thubpay-border rounded-lg focus:ring-2 focus:ring-thubpay-gold focus:border-thubpay-gold"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">
                     Permissions
                   </label>
                   <div className="space-y-2">
@@ -383,15 +383,15 @@ function APIKeySettings({ workspaceId }: { workspaceId: string }) {
                               setNewKeyPermissions(newKeyPermissions.filter(p => p !== permission));
                             }
                           }}
-                          className="rounded border-gray-300"
+                          className="rounded border-thubpay-border"
                         />
                         <span className="text-sm capitalize">{permission}</span>
                       </label>
                     ))}
                   </div>
                 </div>
-                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <p className="text-sm text-yellow-800">
+                <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                  <p className="text-sm text-yellow-200">
                     <AlertCircle className="w-4 h-4 inline mr-1" />
                     <strong>Important:</strong> Copy this key now. You won't be able to see it again.
                   </p>
@@ -403,7 +403,7 @@ function APIKeySettings({ workspaceId }: { workspaceId: string }) {
                       setNewKeyName('');
                       setNewKeyPermissions(['read', 'write']);
                     }}
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                    className="flex-1 px-4 py-2 border border-thubpay-border rounded-lg hover:bg-thubpay-elevated transition-colors"
                   >
                     Cancel
                   </button>
@@ -412,7 +412,7 @@ function APIKeySettings({ workspaceId }: { workspaceId: string }) {
                       // TODO: Call API to generate key
                       setShowNewKey(false);
                     }}
-                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    className="flex-1 px-4 py-2 btn-gradient text-[#111] rounded-lg hover:opacity-95 transition-colors"
                   >
                     Generate Key
                   </button>
@@ -456,42 +456,42 @@ function NotificationSettings({ workspaceId }: { workspaceId: string }) {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-6">
+      <div className="bg-thubpay-surface rounded-lg shadow-sm border border-thubpay-border p-6">
+        <h2 className="text-lg font-semibold text-white mb-6">
           Email Notifications
         </h2>
         <div className="space-y-4">
           {emailTemplates.length === 0 ? (
-            <p className="text-gray-500 text-sm">Loading email templates...</p>
+            <p className="text-zinc-500 text-sm">Loading email templates...</p>
           ) : (
             emailTemplates.map((template) => (
-              <div key={template.id} className="border border-gray-200 rounded-lg p-4">
+              <div key={template.id} className="border border-thubpay-border rounded-lg p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-medium text-gray-900 capitalize">{template.id.replace('_', ' ')}</h3>
-                  <select className="text-sm border border-gray-300 rounded-lg px-2 py-1">
+                  <h3 className="font-medium text-white capitalize">{template.id.replace('_', ' ')}</h3>
+                  <select className="text-sm border border-thubpay-border rounded-lg px-2 py-1">
                     <option>Transactional</option>
                     <option>Marketing</option>
                   </select>
                 </div>
                 <div className="space-y-2">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-zinc-300 mb-1">
                       Subject
                     </label>
                     <input
                       type="text"
                       value={template.subject}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-thubpay-border rounded-lg focus:ring-2 focus:ring-thubpay-gold"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-zinc-300 mb-1">
                       Email Template
                     </label>
                     <textarea
                       rows={4}
                       value={template.html_content}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-thubpay-border rounded-lg focus:ring-2 focus:ring-thubpay-gold"
                     />
                   </div>
                 </div>
@@ -501,17 +501,17 @@ function NotificationSettings({ workspaceId }: { workspaceId: string }) {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-6">
+      <div className="bg-thubpay-surface rounded-lg shadow-sm border border-thubpay-border p-6">
+        <h2 className="text-lg font-semibold text-white mb-6">
           Notification Preferences
         </h2>
         <div className="space-y-4">
           {events.map((event) => (
-            <div key={event.id} className="border border-gray-200 rounded-lg p-4">
+            <div key={event.id} className="border border-thubpay-border rounded-lg p-4">
               <div className="flex items-start justify-between">
                 <div>
-                  <h3 className="font-medium text-gray-900">{event.label}</h3>
-                  <p className="text-sm text-gray-500 mt-1">{event.description}</p>
+                  <h3 className="font-medium text-white">{event.label}</h3>
+                  <p className="text-sm text-zinc-500 mt-1">{event.description}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   {channels.map((channel) => (
@@ -519,9 +519,9 @@ function NotificationSettings({ workspaceId }: { workspaceId: string }) {
                       <input
                         type="checkbox"
                         checked={preferences.some((p) => p.event_type === event.id && p.channel === channel.id)}
-                        className="rounded border-gray-300"
+                        className="rounded border-thubpay-border"
                       />
-                      <span className="text-xs text-gray-600 capitalize">{channel.id}</span>
+                      <span className="text-xs text-zinc-400 capitalize">{channel.id}</span>
                     </label>
                   ))}
                 </div>
@@ -557,14 +557,14 @@ function TeamSettings({ workspaceId }: { workspaceId: string }) {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="bg-thubpay-surface rounded-lg shadow-sm border border-thubpay-border p-6">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className="text-lg font-semibold text-white">
             Team Members
           </h2>
           <button
             onClick={() => setShowInvite(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 btn-gradient text-[#111] rounded-lg hover:opacity-95 transition-colors"
           >
             <Plus className="w-4 h-4" />
             Invite Member
@@ -573,30 +573,30 @@ function TeamSettings({ workspaceId }: { workspaceId: string }) {
 
         <div className="space-y-4">
           {members.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              <Users className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+            <div className="text-center py-12 text-zinc-500">
+              <Users className="w-12 h-12 mx-auto mb-4 text-zinc-500" />
               <p>No team members yet</p>
               <p className="text-sm mt-2">Invite team members to collaborate</p>
             </div>
           ) : (
             members.map((member) => (
-              <div key={member.user_id} className="border border-gray-200 rounded-lg p-4">
+              <div key={member.user_id} className="border border-thubpay-border rounded-lg p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                      <span className="text-blue-700 font-medium">
+                    <div className="w-10 h-10 rounded-full bg-thubpay-gold/15 flex items-center justify-center">
+                      <span className="text-thubpay-gold font-medium">
                         {member.email?.[0]?.toUpperCase() || 'U'}
                       </span>
                     </div>
                     <div>
-                      <h3 className="font-medium text-gray-900">{member.email}</h3>
+                      <h3 className="font-medium text-white">{member.email}</h3>
                       <span
                         className={`text-xs px-2 py-0.5 rounded-full ${
                           member.role === 'owner'
                             ? 'bg-purple-100 text-purple-700'
                             : member.role === 'admin'
-                            ? 'bg-blue-100 text-blue-700'
-                            : 'bg-gray-100 text-gray-700'
+                            ? 'bg-thubpay-gold/15 text-thubpay-gold'
+                            : 'bg-thubpay-elevated text-zinc-300'
                         }`}
                       >
                         {member.role}
@@ -604,7 +604,7 @@ function TeamSettings({ workspaceId }: { workspaceId: string }) {
                     </div>
                   </div>
                   {member.role !== 'owner' && (
-                    <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700">
+                    <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-400">
                       Remove
                     </Button>
                   )}
@@ -618,12 +618,12 @@ function TeamSettings({ workspaceId }: { workspaceId: string }) {
       {/* Invite Member Modal */}
       {showInvite && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+          <div className="bg-thubpay-surface rounded-lg shadow-xl max-w-md w-full mx-4">
             <div className="p-6">
               <h3 className="text-lg font-semibold mb-4">Invite Team Member</h3>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-zinc-300 mb-1">
                     Email Address
                   </label>
                   <input
@@ -631,17 +631,17 @@ function TeamSettings({ workspaceId }: { workspaceId: string }) {
                     placeholder="member@company.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-thubpay-border rounded-lg focus:ring-2 focus:ring-thubpay-gold focus:border-thubpay-gold"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-zinc-300 mb-1">
                     Role
                   </label>
                   <select
                     value={role}
                     onChange={(e) => setRole(e.target.value as 'admin' | 'member')}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-thubpay-border rounded-lg focus:ring-2 focus:ring-thubpay-gold focus:border-thubpay-gold"
                   >
                     {roles.map((r) => (
                       <option key={r.id} value={r.id}>
@@ -657,7 +657,7 @@ function TeamSettings({ workspaceId }: { workspaceId: string }) {
                       setEmail('');
                       setRole('member');
                     }}
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                    className="flex-1 px-4 py-2 border border-thubpay-border rounded-lg hover:bg-thubpay-elevated transition-colors"
                   >
                     Cancel
                   </button>
@@ -666,7 +666,7 @@ function TeamSettings({ workspaceId }: { workspaceId: string }) {
                       // TODO: Call API to invite member
                       setShowInvite(false);
                     }}
-                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    className="flex-1 px-4 py-2 btn-gradient text-[#111] rounded-lg hover:opacity-95 transition-colors"
                   >
                     Send Invite
                   </button>
@@ -701,20 +701,20 @@ function BrandingSettings({ workspaceId }: { workspaceId: string }) {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-6">
+      <div className="bg-thubpay-surface rounded-lg shadow-sm border border-thubpay-border p-6">
+        <h2 className="text-lg font-semibold text-white mb-6">
           Branding
         </h2>
 
         <div className="space-y-6">
           {/* Logo Upload */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-zinc-300 mb-1">
               Logo
             </label>
             <div className="flex items-center gap-4">
               {brand.logo_url ? (
-                <div className="relative w-20 h-20 rounded-lg overflow-hidden bg-gray-100">
+                <div className="relative w-20 h-20 rounded-lg overflow-hidden bg-thubpay-elevated">
                   <img
                     src={brand.logo_url}
                     alt="Logo"
@@ -722,7 +722,7 @@ function BrandingSettings({ workspaceId }: { workspaceId: string }) {
                   />
                 </div>
               ) : (
-                <div className="w-20 h-20 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400">
+                <div className="w-20 h-20 rounded-lg bg-thubpay-elevated flex items-center justify-center text-zinc-500">
                   <Building2 className="w-8 h-8" />
                 </div>
               )}
@@ -731,14 +731,14 @@ function BrandingSettings({ workspaceId }: { workspaceId: string }) {
                   type="file"
                   accept="image/*"
                   onChange={handleFileUpload}
-                  className="block w-full text-sm text-gray-500
+                  className="block w-full text-sm text-zinc-500
                     file:mr-4 file:py-2 file:px-4
                     file:rounded-full file:border-0
                     file:text-sm file:font-semibold
-                    file:bg-blue-50 file:text-blue-700
-                    hover:file:bg-blue-100"
+                    file:bg-thubpay-gold/10 file:text-thubpay-gold
+                    hover:file:bg-thubpay-gold/15"
                 />
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-zinc-500 mt-1">
                   PNG, JPG up to 2MB (recommended 500x500px)
                 </p>
               </div>
@@ -748,7 +748,7 @@ function BrandingSettings({ workspaceId }: { workspaceId: string }) {
           {/* Company Information */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-zinc-300 mb-1">
                 Company Name
               </label>
               <input
@@ -756,11 +756,11 @@ function BrandingSettings({ workspaceId }: { workspaceId: string }) {
                 name="company_name"
                 value={brand.company_name || ''}
                 onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-thubpay-border rounded-lg focus:ring-2 focus:ring-thubpay-gold"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-zinc-300 mb-1">
                 Support Email
               </label>
               <input
@@ -768,13 +768,13 @@ function BrandingSettings({ workspaceId }: { workspaceId: string }) {
                 name="support_email"
                 value={brand.support_email || ''}
                 onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-thubpay-border rounded-lg focus:ring-2 focus:ring-thubpay-gold"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-zinc-300 mb-1">
               Website URL
             </label>
             <input
@@ -783,18 +783,18 @@ function BrandingSettings({ workspaceId }: { workspaceId: string }) {
               value={brand.website_url || ''}
               onChange={handleInputChange}
               placeholder="https://yourcompany.com"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-thubpay-border rounded-lg focus:ring-2 focus:ring-thubpay-gold"
             />
           </div>
 
           {/* Theme Colors */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-zinc-300 mb-2">
               Brand Colors
             </label>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm text-gray-600 mb-1">
+                <label className="block text-sm text-zinc-400 mb-1">
                   Primary Color
                 </label>
                 <div className="flex gap-2">
@@ -802,18 +802,18 @@ function BrandingSettings({ workspaceId }: { workspaceId: string }) {
                     type="color"
                     value={brand.primary_color || '#3B82F6'}
                     onChange={(e) => handleInputChange({ target: { name: 'primary_color', value: e.target.value } } as any)}
-                    className="w-12 h-10 rounded border border-gray-300"
+                    className="w-12 h-10 rounded border border-thubpay-border"
                   />
                   <input
                     type="text"
                     value={brand.primary_color || ''}
                     onChange={(e) => handleInputChange({ target: { name: 'primary_color', value: e.target.value } } as any)}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"
+                    className="flex-1 px-3 py-2 border border-thubpay-border rounded-lg"
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-sm text-gray-600 mb-1">
+                <label className="block text-sm text-zinc-400 mb-1">
                   Secondary Color
                 </label>
                 <div className="flex gap-2">
@@ -821,13 +821,13 @@ function BrandingSettings({ workspaceId }: { workspaceId: string }) {
                     type="color"
                     value={brand.secondary_color || '#10B981'}
                     onChange={(e) => handleInputChange({ target: { name: 'secondary_color', value: e.target.value } } as any)}
-                    className="w-12 h-10 rounded border border-gray-300"
+                    className="w-12 h-10 rounded border border-thubpay-border"
                   />
                   <input
                     type="text"
                     value={brand.secondary_color || ''}
                     onChange={(e) => handleInputChange({ target: { name: 'secondary_color', value: e.target.value } } as any)}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"
+                    className="flex-1 px-3 py-2 border border-thubpay-border rounded-lg"
                   />
                 </div>
               </div>
@@ -844,7 +844,7 @@ function BrandingSettings({ workspaceId }: { workspaceId: string }) {
               // TODO: Call API to save branding
               setShowSave(false);
             }}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-lg"
+            className="inline-flex items-center gap-2 px-6 py-3 btn-gradient text-[#111] rounded-lg hover:opacity-95 shadow-lg transition-colors"
           >
             <CheckCircle2 className="w-5 h-5" />
             Save Changes
@@ -860,11 +860,11 @@ function Button({ variant = 'default', size = 'default', children, className = '
   const baseStyles = 'inline-flex items-center justify-center px-4 py-2 rounded-lg font-medium transition-colors';
 
   const variants: Record<string, string> = {
-    default: 'bg-blue-600 text-white hover:bg-blue-700',
+    default: 'bg-thubpay-gold text-[#111] hover:opacity-90',
     destructive: 'bg-red-600 text-white hover:bg-red-700',
-    outline: 'border border-gray-300 bg-white hover:bg-gray-50',
-    ghost: 'hover:bg-gray-100',
-    primary: 'bg-green-600 text-white hover:bg-green-700'
+    outline: 'border border-thubpay-border bg-thubpay-surface hover:bg-thubpay-elevated',
+    ghost: 'hover:bg-thubpay-elevated',
+    primary: 'btn-gradient text-[#111] hover:opacity-95'
   };
 
   const sizes: Record<string, string> = {

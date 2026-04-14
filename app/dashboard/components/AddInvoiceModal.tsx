@@ -39,8 +39,8 @@ export default function AddInvoiceModal({ open, onClose, clients, brands }: Prop
   const total = subtotal + tax;
 
   const brand = brands.find((b) => b.id === selectedBrand);
-  const gradFrom = brand?.gradient_from ?? '#7A5A2B';
-  const gradTo = brand?.gradient_to ?? '#D4B27A';
+  const gradFrom = brand?.gradient_from ?? '#C5A059';
+  const gradTo = brand?.gradient_to ?? '#0A6C7B';
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -56,7 +56,7 @@ export default function AddInvoiceModal({ open, onClose, clients, brands }: Prop
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative z-10 w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-thubpay-border overflow-hidden animate-slideUp my-4">
+      <div className="relative z-10 w-full max-w-xl bg-thubpay-surface rounded-2xl shadow-2xl border border-thubpay-border overflow-hidden animate-slideUp my-4">
         {/* Header */}
         <div
           className="px-6 py-5 transition-all duration-300"
@@ -69,7 +69,7 @@ export default function AddInvoiceModal({ open, onClose, clients, brands }: Prop
             </div>
             <button
               onClick={onClose}
-              className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white hover:bg-white/30 transition-colors"
+              className="w-8 h-8 rounded-full bg-black/20 flex items-center justify-center text-white hover:bg-black/30 transition-colors"
             >
               ✕
             </button>
@@ -88,7 +88,7 @@ export default function AddInvoiceModal({ open, onClose, clients, brands }: Prop
                 required
                 value={selectedClient}
                 onChange={(e) => setSelectedClient(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-zinc-50 text-zinc-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#7A5A2B]/40 transition"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-thubpay-elevated text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-thubpay-gold/40 transition"
               >
                 <option value="">Select client</option>
                 {clients.map((c) => (
@@ -106,7 +106,7 @@ export default function AddInvoiceModal({ open, onClose, clients, brands }: Prop
                 name="brand_id"
                 value={selectedBrand}
                 onChange={(e) => setSelectedBrand(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-zinc-50 text-zinc-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#7A5A2B]/40 transition"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-thubpay-elevated text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-thubpay-gold/40 transition"
               >
                 <option value="">No brand (ThubPay default)</option>
                 {brands.map((b) => (
@@ -126,7 +126,7 @@ export default function AddInvoiceModal({ open, onClose, clients, brands }: Prop
             <input
               name="description"
               placeholder="e.g. Website redesign — Phase 1"
-              className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-zinc-50 text-zinc-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#7A5A2B]/40 transition"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-thubpay-elevated text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-thubpay-gold/40 transition"
             />
           </div>
 
@@ -147,7 +147,7 @@ export default function AddInvoiceModal({ open, onClose, clients, brands }: Prop
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="0.00"
-                  className="w-full pl-7 pr-3.5 py-2.5 rounded-xl border border-thubpay-border bg-zinc-50 text-zinc-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#7A5A2B]/40 transition"
+                  className="w-full pl-7 pr-3.5 py-2.5 rounded-xl border border-thubpay-border bg-thubpay-elevated text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-thubpay-gold/40 transition"
                 />
               </div>
             </div>
@@ -164,7 +164,7 @@ export default function AddInvoiceModal({ open, onClose, clients, brands }: Prop
                   max="100"
                   value={taxRate}
                   onChange={(e) => setTaxRate(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-zinc-50 text-zinc-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#7A5A2B]/40 transition"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-thubpay-elevated text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-thubpay-gold/40 transition"
                 />
                 <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">%</span>
               </div>
@@ -198,7 +198,7 @@ export default function AddInvoiceModal({ open, onClose, clients, brands }: Prop
               <input
                 name="due_date"
                 type="date"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-zinc-50 text-zinc-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#7A5A2B]/40 transition"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-thubpay-elevated text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-thubpay-gold/40 transition"
               />
             </div>
             <div>
@@ -208,7 +208,7 @@ export default function AddInvoiceModal({ open, onClose, clients, brands }: Prop
               <select
                 name="payment_terms"
                 defaultValue="Net 30"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-zinc-50 text-zinc-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#7A5A2B]/40 transition"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-thubpay-elevated text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-thubpay-gold/40 transition"
               >
                 <option>Due on Receipt</option>
                 <option>Net 7</option>
@@ -229,7 +229,7 @@ export default function AddInvoiceModal({ open, onClose, clients, brands }: Prop
               name="notes"
               rows={2}
               placeholder="Payment instructions, thank you note, etc."
-              className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-zinc-50 text-zinc-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#7A5A2B]/40 transition resize-none"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-thubpay-elevated text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-thubpay-gold/40 transition resize-none"
             />
           </div>
 

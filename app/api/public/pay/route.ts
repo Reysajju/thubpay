@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { getURL } from '@/utils/helpers';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2023-10-16'
@@ -91,8 +92,8 @@ export async function POST(request: NextRequest) {
         }
       ],
       mode: 'payment',
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/pay/success?session_id={CHECKOUT_SESSION_ID}&paymentLinkId=${paymentLinkId}`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/pay/cancel?paymentLinkId=${paymentLinkId}`,
+      success_url: `${getURL('/pay/success')}?session_id={CHECKOUT_SESSION_ID}&paymentLinkId=${paymentLinkId}`,
+      cancel_url: `${getURL('/pay/cancel')}?paymentLinkId=${paymentLinkId}`,
       metadata: {
         payment_link_id: paymentLinkId,
         workspace_id: paymentLink.workspace_id

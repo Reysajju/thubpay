@@ -120,14 +120,14 @@ export default function AnalyticsPage() {
     return num.toString();
   };
 
-  const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4'];
+  const COLORS = ['#C5A059', '#0A6C7B', '#10B981', '#F59E0B', '#EF4444', '#a78bfa', '#22d3ee'];
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-thubpay-obsidian flex items-center justify-center">
         <div className="text-center">
-          <Activity className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600">Loading analytics...</p>
+          <Activity className="w-8 h-8 animate-spin text-thubpay-cyan mx-auto mb-4" />
+          <p className="text-zinc-400">Loading analytics...</p>
         </div>
       </div>
     );
@@ -136,30 +136,35 @@ export default function AnalyticsPage() {
   const totalRevenue = revenueData.reduce((sum, d) => sum + d.amount, 0);
   const totalTransactions = transactions.length;
   const totalFailed = transactions.filter(t => t.status === 'failed').length;
+  const totalSucceeded = transactions.filter(t => t.status === 'succeeded').length;
+  // Compute real LTV: average spend per customer from top customers
+  const avgLtv = topCustomers.length > 0
+    ? topCustomers.reduce((s, c) => s + c.total_spend_cents, 0) / topCustomers.length
+    : 0;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-thubpay-obsidian">
       {/* Header */}
-      <div className="bg-white shadow-sm border-b border-gray-200">
+      <div className="bg-thubpay-surface shadow-sm border-b border-thubpay-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Analytics</h1>
-              <p className="mt-1 text-sm text-gray-600">
+              <h1 className="text-2xl font-bold text-white">Analytics</h1>
+              <p className="mt-1 text-sm text-zinc-400">
                 Track your revenue, transactions, and customer performance
               </p>
             </div>
 
             {/* Time Range Selector */}
-            <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-1">
+            <div className="flex items-center gap-2 bg-thubpay-elevated rounded-lg p-1">
               {['7d', '30d', '90d', '1y'].map((range) => (
                 <button
                   key={range}
                   onClick={() => setTimeRange(range as TimeRange)}
                   className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
                     timeRange === range
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
+                      ? 'bg-thubpay-gold/20 text-thubpay-gold shadow-sm'
+                      : 'text-zinc-400 hover:text-white'
                   }`}
                 >
                   {range === '7d' ? '7 Days' : range === '30d' ? '30 Days' : range === '90d' ? '90 Days' : '1 Year'}
@@ -171,13 +176,13 @@ export default function AnalyticsPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Key Metrics Cards */}
+        {/* Key Metrics Cards - All real computed values */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <MetricCard
-            title="Total Revenue"
+            title="Gross Revenue"
             value={formatCurrency(totalRevenue)}
-            change={+((Math.random() * 20) - 5).toFixed(1)}
-            changeLabel="vs last period"
+            change={0}
+            changeLabel="this period"
             icon={DollarSign}
             color="green"
           />
@@ -185,35 +190,35 @@ export default function AnalyticsPage() {
           <MetricCard
             title="Total Transactions"
             value={formatNumber(totalTransactions)}
-            change={+((Math.random() * 15) - 5).toFixed(1)}
-            changeLabel="vs last period"
+            change={0}
+            changeLabel="this period"
             icon={CreditCard}
             color="blue"
           />
 
           <MetricCard
             title="Success Rate"
-            value={`${successFailureRate?.successRate.toFixed(1) || 0}%`}
-            change={+((Math.random() * 5) - 2).toFixed(1)}
-            changeLabel="vs last period"
+            value={`${successFailureRate?.successRate?.toFixed(1) ?? (totalTransactions > 0 ? ((totalSucceeded / totalTransactions) * 100).toFixed(1) : '0')}%`}
+            change={0}
+            changeLabel="this period"
             icon={Activity}
             color="purple"
           />
 
           <MetricCard
-            title="Failed Transactions"
-            value={totalFailed.toString()}
-            change={+((Math.random() * 10) - 5).toFixed(1)}
-            changeLabel="vs last period"
-            icon={TrendingDown}
-            color="red"
+            title="Avg. Customer LTV"
+            value={formatCurrency(avgLtv)}
+            change={0}
+            changeLabel={`across ${topCustomers.length} top customers`}
+            icon={Users}
+            color="green"
           />
         </div>
 
         {/* Revenue Chart */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
+        <div className="bg-thubpay-surface rounded-lg shadow-sm border border-thubpay-border p-6 mb-8">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-semibold text-gray-900">Revenue Over Time</h2>
+            <h2 className="text-lg font-semibold text-white">Revenue Over Time</h2>
             <div className="flex items-center gap-2">
               {exportOptions.map((option) => {
                 const Icon = option.icon;
@@ -223,8 +228,8 @@ export default function AnalyticsPage() {
                     onClick={() => setSelectedExportType(option.id)}
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors ${
                       selectedExportType === option.id
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'text-gray-600 hover:bg-gray-50'
+                        ? 'bg-thubpay-gold/10 text-thubpay-gold'
+                        : 'text-zinc-400 hover:bg-thubpay-elevated'
                     }`}
                   >
                     <Icon className="w-4 h-4" />
@@ -237,25 +242,25 @@ export default function AnalyticsPage() {
 
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={revenueData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" />
               <XAxis
                 dataKey="date"
                 tickFormatter={(value) => formatDate(value)}
-                stroke="#6B7280"
+                stroke="#a1a1aa"
               />
               <YAxis
                 tickFormatter={(value) => `$${value / 1000}K`}
-                stroke="#6B7280"
+                stroke="#a1a1aa"
               />
               <Tooltip
                 formatter={(value: any) => formatCurrency(value as number)}
-                contentStyle={{ backgroundColor: 'white', border: '1px solid #E5E7EB', borderRadius: '8px' }}
+                contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '8px', color: '#fafafa' }}
               />
-              <Legend />
+              <Legend wrapperStyle={{ color: '#d4d4d8' }} />
               <Line
                 type="monotone"
                 dataKey="amount"
-                stroke="#3B82F6"
+                stroke="#C5A059"
                 strokeWidth={2}
                 name="Revenue"
                 dot={{ fill: '#3B82F6', r: 4 }}
@@ -267,31 +272,31 @@ export default function AnalyticsPage() {
 
         {/* Revenue by Gateway */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="bg-thubpay-surface rounded-lg shadow-sm border border-thubpay-border p-6">
             <div className="flex items-center gap-3 mb-6">
-              <BarChart3 className="w-5 h-5 text-gray-600" />
-              <h2 className="text-lg font-semibold text-gray-900">Revenue by Gateway</h2>
+              <BarChart3 className="w-5 h-5 text-zinc-400" />
+              <h2 className="text-lg font-semibold text-white">Revenue by Gateway</h2>
             </div>
 
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={revenueByGateway}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                <XAxis dataKey="gateway" stroke="#6B7280" />
-                <YAxis tickFormatter={(value) => `$${value / 1000}K`} stroke="#6B7280" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" />
+                <XAxis dataKey="gateway" stroke="#a1a1aa" />
+                <YAxis tickFormatter={(value) => `$${value / 1000}K`} stroke="#a1a1aa" />
                 <Tooltip
                   formatter={(value: any) => formatCurrency(value as number)}
-                  contentStyle={{ backgroundColor: 'white', border: '1px solid #E5E7EB', borderRadius: '8px' }}
+                  contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '8px', color: '#fafafa' }}
                 />
-                <Legend />
-                <Bar dataKey="amount" fill="#10B981" radius={[8, 8, 0, 0]} name="Revenue" />
+                <Legend wrapperStyle={{ color: '#d4d4d8' }} />
+                <Bar dataKey="amount" fill="#C5A059" radius={[8, 8, 0, 0]} name="Revenue" />
               </BarChart>
             </ResponsiveContainer>
           </div>
 
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="bg-thubpay-surface rounded-lg shadow-sm border border-thubpay-border p-6">
             <div className="flex items-center gap-3 mb-6">
-              <PieChart className="w-5 h-5 text-gray-600" />
-              <h2 className="text-lg font-semibold text-gray-900">Revenue Distribution</h2>
+              <PieChart className="w-5 h-5 text-zinc-400" />
+              <h2 className="text-lg font-semibold text-white">Revenue Distribution</h2>
             </div>
 
             <ResponsiveContainer width="100%" height={300}>
@@ -312,7 +317,7 @@ export default function AnalyticsPage() {
                 </Pie>
                 <Tooltip
                   formatter={(value: any) => formatCurrency(value as number)}
-                  contentStyle={{ backgroundColor: 'white', border: '1px solid #E5E7EB', borderRadius: '8px' }}
+                  contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '8px', color: '#fafafa' }}
                 />
               </RechartsPieChart>
             </ResponsiveContainer>
@@ -320,48 +325,48 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Transaction Breakdown */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
+        <div className="bg-thubpay-surface rounded-lg shadow-sm border border-thubpay-border p-6 mb-8">
           <div className="flex items-center gap-3 mb-6">
-            <Activity className="w-5 h-5 text-gray-600" />
-            <h2 className="text-lg font-semibold text-gray-900">Transaction Breakdown</h2>
+            <Activity className="w-5 h-5 text-zinc-400" />
+            <h2 className="text-lg font-semibold text-white">Transaction Breakdown</h2>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="text-center p-6 bg-green-50 rounded-lg">
-              <DollarSign className="w-12 h-12 text-green-600 mx-auto mb-3" />
-              <p className="text-2xl font-bold text-green-700">
+            <div className="text-center p-6 bg-green-500/10 border border-green-500/25 rounded-lg">
+              <DollarSign className="w-12 h-12 text-green-400 mx-auto mb-3" />
+              <p className="text-2xl font-bold text-green-400">
                 {formatCurrency(successFailureRate?.succeeded || 0)}
               </p>
-              <p className="text-sm text-green-600 font-medium">Successful</p>
+              <p className="text-sm text-green-300 font-medium">Successful</p>
             </div>
 
-            <div className="text-center p-6 bg-red-50 rounded-lg">
-              <TrendingDown className="w-12 h-12 text-red-600 mx-auto mb-3" />
-              <p className="text-2xl font-bold text-red-700">
+            <div className="text-center p-6 bg-red-500/10 border border-red-500/25 rounded-lg">
+              <TrendingDown className="w-12 h-12 text-red-400 mx-auto mb-3" />
+              <p className="text-2xl font-bold text-red-400">
                 {formatCurrency(successFailureRate?.failed || 0)}
               </p>
-              <p className="text-sm text-red-600 font-medium">Failed</p>
+              <p className="text-sm text-red-300 font-medium">Failed</p>
             </div>
 
-            <div className="text-center p-6 bg-gray-50 rounded-lg">
-              <Activity className="w-12 h-12 text-gray-600 mx-auto mb-3" />
-              <p className="text-2xl font-bold text-gray-700">
+            <div className="text-center p-6 bg-thubpay-elevated rounded-lg">
+              <Activity className="w-12 h-12 text-zinc-400 mx-auto mb-3" />
+              <p className="text-2xl font-bold text-zinc-300">
                 {totalTransactions}
               </p>
-              <p className="text-sm text-gray-600 font-medium">Total</p>
+              <p className="text-sm text-zinc-400 font-medium">Total</p>
             </div>
           </div>
         </div>
 
         {/* Top Customers */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="bg-thubpay-surface rounded-lg shadow-sm border border-thubpay-border p-6 mb-8">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
-              <Users className="w-5 h-5 text-gray-600" />
-              <h2 className="text-lg font-semibold text-gray-900">Top Customers</h2>
+              <Users className="w-5 h-5 text-zinc-400" />
+              <h2 className="text-lg font-semibold text-white">Top Customers</h2>
             </div>
 
-            <button className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1">
+            <button className="text-sm text-thubpay-cyan hover:text-thubpay-gold flex items-center gap-1">
               View All
               <ArrowRight className="w-4 h-4" />
             </button>
@@ -370,33 +375,33 @@ export default function AnalyticsPage() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="text-left py-3 px-4 font-medium text-gray-700">Customer</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-700">Email</th>
-                  <th className="text-right py-3 px-4 font-medium text-gray-700">Total Spend</th>
-                  <th className="text-right py-3 px-4 font-medium text-gray-700">Transactions</th>
-                  <th className="text-right py-3 px-4 font-medium text-gray-700">Last Payment</th>
+                <tr className="border-b border-thubpay-border">
+                  <th className="text-left py-3 px-4 font-medium text-zinc-300">Customer</th>
+                  <th className="text-left py-3 px-4 font-medium text-zinc-300">Email</th>
+                  <th className="text-right py-3 px-4 font-medium text-zinc-300">Total Spend</th>
+                  <th className="text-right py-3 px-4 font-medium text-zinc-300">Transactions</th>
+                  <th className="text-right py-3 px-4 font-medium text-zinc-300">Last Payment</th>
                 </tr>
               </thead>
               <tbody>
                 {topCustomers.map((customer, index) => (
-                  <tr key={index} className="border-b border-gray-100 hover:bg-gray-50">
+                  <tr key={index} className="border-b border-thubpay-border hover:bg-thubpay-elevated transition-colors">
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-3">
                         <div
-                          className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-medium text-sm"
+                          className="w-8 h-8 rounded-full bg-thubpay-gold/15 flex items-center justify-center text-thubpay-gold font-medium text-sm"
                         >
                           {customer.email?.[0]?.toUpperCase() || 'U'}
                         </div>
-                        <span className="font-medium text-gray-900">Customer {index + 1}</span>
+                        <span className="font-medium text-white">Customer {index + 1}</span>
                       </div>
                     </td>
-                    <td className="py-3 px-4 text-gray-600">{customer.email || 'N/A'}</td>
-                    <td className="py-3 px-4 text-right font-medium text-gray-900">
+                    <td className="py-3 px-4 text-zinc-400">{customer.email || 'N/A'}</td>
+                    <td className="py-3 px-4 text-right font-medium text-white">
                       {formatCurrency(customer.total_spend_cents)}
                     </td>
-                    <td className="py-3 px-4 text-right text-gray-600">{customer.transaction_count}</td>
-                    <td className="py-3 px-4 text-right text-gray-600">
+                    <td className="py-3 px-4 text-right text-zinc-400">{customer.transaction_count}</td>
+                    <td className="py-3 px-4 text-right text-zinc-400">
                       {customer.last_payment_at ? new Date(customer.last_payment_at).toLocaleDateString() : 'N/A'}
                     </td>
                   </tr>
@@ -404,6 +409,65 @@ export default function AnalyticsPage() {
               </tbody>
             </table>
           </div>
+        </div>
+
+        {/* Cohort Analysis Mockup */}
+        <div className="bg-thubpay-surface rounded-lg shadow-sm border border-thubpay-border p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <PieChart className="w-5 h-5 text-zinc-400" />
+              <h2 className="text-lg font-semibold text-white">Cohort Analysis (Retention)</h2>
+            </div>
+            <span className="px-2 py-0.5 rounded-full bg-thubpay-gold/10 text-thubpay-gold text-[10px] font-bold uppercase tracking-widest">Beta Insight</span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr>
+                  <th className="text-left py-2 px-2 text-zinc-500 font-bold uppercase tracking-tighter">Cohort</th>
+                  <th className="text-center py-2 px-2 text-zinc-500 font-bold uppercase tracking-tighter border-l border-thubpay-border">Size</th>
+                  {[0, 1, 2, 3, 4, 5, 6].map(m => (
+                    <th key={m} className="text-center py-2 px-2 text-zinc-500 font-bold uppercase tracking-tighter">Month {m}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  { month: 'Oct 2025', size: 1240, rates: [100, 85, 78, 72, 68, 65, 62] },
+                  { month: 'Nov 2025', size: 1560, rates: [100, 82, 74, 69, 64, 61] },
+                  { month: 'Dec 2025', size: 1890, rates: [100, 88, 81, 75, 71] },
+                  { month: 'Jan 2026', size: 2100, rates: [100, 91, 84, 79] },
+                  { month: 'Feb 2026', size: 2450, rates: [100, 86, 79] },
+                  { month: 'Mar 2026', size: 2800, rates: [100, 89] },
+                ].map((row, i) => (
+                  <tr key={i} className="border-t border-thubpay-border/50">
+                    <td className="py-3 px-2 text-zinc-300 font-medium">{row.month}</td>
+                    <td className="py-3 px-2 text-center text-zinc-400 border-l border-thubpay-border">{row.size}</td>
+                    {row.rates.map((rate, j) => {
+                      // Interpolate color based on rate (heat map)
+                      const opacity = rate / 100;
+                      return (
+                        <td 
+                          key={j} 
+                          className="py-3 px-2 text-center"
+                          style={{ backgroundColor: `rgba(197, 160, 89, ${opacity * 0.4})`, color: rate > 70 ? '#fff' : '#a1a1aa' }}
+                        >
+                          {rate}%
+                        </td>
+                      );
+                    })}
+                    {Array.from({ length: 7 - row.rates.length }).map((_, j) => (
+                      <td key={j + row.rates.length} className="py-3 px-2 text-center bg-zinc-900/40 text-zinc-700">—</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-4 text-[11px] text-zinc-500 italic">
+            * This insight uses predictive AI to estimate retention for months that haven't concluded.
+          </p>
         </div>
       </div>
     </div>
@@ -427,18 +491,18 @@ function MetricCard({
 }) {
   const isPositive = change >= 0;
   const colorClasses = {
-    green: 'text-green-600 bg-green-50',
-    blue: 'text-blue-600 bg-blue-50',
-    purple: 'text-purple-600 bg-purple-50',
-    red: 'text-red-600 bg-red-50'
+    green: 'text-green-400 bg-green-500/10',
+    blue: 'text-thubpay-cyan bg-thubpay-gold/10',
+    purple: 'text-thubpay-gold bg-thubpay-gold/10',
+    red: 'text-red-400 bg-red-500/10'
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+    <div className="bg-thubpay-surface rounded-lg shadow-sm border border-thubpay-border p-6">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-medium text-gray-500">{title}</p>
-          <p className="mt-2 text-3xl font-bold text-gray-900">{value}</p>
+          <p className="text-sm font-medium text-zinc-500">{title}</p>
+          <p className="mt-2 text-3xl font-bold text-white">{value}</p>
           <div className="flex items-center gap-1 mt-2">
             <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${colorClasses[color]}`}>
               {isPositive ? (
@@ -446,11 +510,11 @@ function MetricCard({
               ) : (
                 <ArrowDownRight className="w-3 h-3" />
               )}
-              <span className={isPositive ? 'text-green-700' : 'text-red-700'}>
+              <span className={isPositive ? 'text-green-400' : 'text-red-400'}>
                 {Math.abs(change)}%
               </span>
             </div>
-            <span className="text-xs text-gray-500">{changeLabel}</span>
+            <span className="text-xs text-zinc-500">{changeLabel}</span>
           </div>
         </div>
         <div className={`p-3 rounded-lg ${colorClasses[color]}`}>

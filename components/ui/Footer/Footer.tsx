@@ -3,36 +3,25 @@ import Logo from '@/components/icons/Logo';
 
 export default function Footer() {
   return (
-    <footer className="bg-[#fffaf1] border-t border-thubpay-border">
-      <div className="max-w-7xl mx-auto px-6 py-16">
+    <footer className="bg-thubpay-dark-2 border-t border-thubpay-border">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-16 w-full min-w-0">
         {/* Top grid */}
-        <div className="grid grid-cols-1 gap-12 lg:grid-cols-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-12 lg:gap-8">
           {/* Brand column */}
-          <div className="col-span-1 lg:col-span-4">
-            <Link href="/" className="flex items-center gap-2.5 mb-4">
+          <div className="md:col-span-2 lg:col-span-4">
+            <Link href="/" className="inline-flex items-center gap-2.5 mb-4">
               <Logo />
-              <span
-                className="text-xl font-bold tracking-tight"
-                style={{
-                  background:
-                    'linear-gradient(135deg, #6C5CE7 0%, #00B4D8 100%)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  backgroundClip: 'text'
-                }}
-              >
-                ThubPay
-              </span>
             </Link>
-            <p className="text-sm text-zinc-600 leading-relaxed max-w-xs">
-              ThubPay is a modern payment portal for startups with bright luxury
-              UX, strong security, and conversion-ready checkout flows.
+            <p className="text-sm text-zinc-400 leading-relaxed max-w-xs">
+              ThubPay is a commercial payment portal for teams that need invoices,
+              payment links, subscriptions, and a single workspace to run revenue
+              operations securely.
             </p>
             <div className="flex items-center gap-3 mt-6">
               <a
                 href="https://twitter.com"
                 aria-label="Twitter"
-                  className="w-9 h-9 rounded-lg bg-thubpay-surface border border-thubpay-border flex items-center justify-center text-zinc-500 hover:text-zinc-900 hover:border-thubpay-violet transition-all duration-200"
+                  className="w-9 h-9 rounded-lg bg-thubpay-surface border border-thubpay-border flex items-center justify-center text-zinc-500 hover:text-thubpay-gold hover:border-thubpay-gold transition-all duration-200"
               >
                 <svg
                   width="16"
@@ -46,7 +35,7 @@ export default function Footer() {
               <a
                 href="https://github.com"
                 aria-label="GitHub"
-                  className="w-9 h-9 rounded-lg bg-thubpay-surface border border-thubpay-border flex items-center justify-center text-zinc-500 hover:text-zinc-900 hover:border-thubpay-violet transition-all duration-200"
+                  className="w-9 h-9 rounded-lg bg-thubpay-surface border border-thubpay-border flex items-center justify-center text-zinc-500 hover:text-thubpay-gold hover:border-thubpay-gold transition-all duration-200"
               >
                 <svg
                   width="16"
@@ -60,7 +49,7 @@ export default function Footer() {
               <a
                 href="https://linkedin.com"
                 aria-label="LinkedIn"
-                  className="w-9 h-9 rounded-lg bg-thubpay-surface border border-thubpay-border flex items-center justify-center text-zinc-500 hover:text-zinc-900 hover:border-thubpay-violet transition-all duration-200"
+                  className="w-9 h-9 rounded-lg bg-thubpay-surface border border-thubpay-border flex items-center justify-center text-zinc-500 hover:text-thubpay-gold hover:border-thubpay-gold transition-all duration-200"
               >
                 <svg
                   width="16"
@@ -90,7 +79,7 @@ export default function Footer() {
                 <li key={item.label}>
                   <Link
                     href={item.href}
-                    className="text-sm text-zinc-600 hover:text-zinc-900 transition-colors duration-150"
+                    className="text-sm text-zinc-400 hover:text-thubpay-gold transition-colors duration-150"
                   >
                     {item.label}
                   </Link>
@@ -114,7 +103,7 @@ export default function Footer() {
                 'Cards + Wallets'
               ].map((gw) => (
                 <li key={gw}>
-                  <span className="text-sm text-zinc-600">{gw}</span>
+                  <span className="text-sm text-zinc-400">{gw}</span>
                 </li>
               ))}
             </ul>
@@ -135,7 +124,7 @@ export default function Footer() {
                 <li key={item.label}>
                   <Link
                     href={item.href}
-                    className="text-sm text-zinc-600 hover:text-zinc-900 transition-colors duration-150"
+                    className="text-sm text-zinc-400 hover:text-thubpay-gold transition-colors duration-150"
                   >
                     {item.label}
                   </Link>
@@ -159,7 +148,7 @@ export default function Footer() {
                 <li key={item.label}>
                   <Link
                     href={item.href}
-                    className="text-sm text-zinc-600 hover:text-zinc-900 transition-colors duration-150"
+                    className="text-sm text-zinc-400 hover:text-thubpay-gold transition-colors duration-150"
                   >
                     {item.label}
                   </Link>
@@ -171,7 +160,7 @@ export default function Footer() {
 
         {/* Divider */}
         <div className="mt-12 pt-8 border-t border-thubpay-border flex flex-col md:flex-row items-center justify-between gap-4">
-          <p className="text-sm text-zinc-600">
+          <p className="text-sm text-zinc-500">
             © {new Date().getFullYear()} ThubPay, Inc. All rights reserved.
           </p>
           <div className="flex items-center gap-2">

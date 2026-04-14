@@ -35,11 +35,11 @@ export default function InvoiceActions({ invoiceId, isDispatched }: Props) {
         <button
           onClick={handleDispatch}
           disabled={isPending}
-          className="btn-gradient inline-flex items-center justify-center rounded-xl px-6 py-3 text-white font-semibold shadow-lg hover:shadow-xl transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+          className="btn-gradient inline-flex items-center justify-center rounded-xl px-6 py-3 text-[#111] font-semibold shadow-lg hover:shadow-xl transition-all disabled:opacity-70 disabled:cursor-not-allowed"
         >
           {isPending ? (
             <span className="flex items-center gap-2">
-              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <span className="w-4 h-4 border-2 border-[#111]/30 border-t-[#111] rounded-full animate-spin" />
               Dispatching...
             </span>
           ) : (
@@ -49,7 +49,7 @@ export default function InvoiceActions({ invoiceId, isDispatched }: Props) {
       ) : (
         <button
           onClick={handleCopy}
-          className="inline-flex items-center justify-center rounded-xl px-6 py-3 border border-thubpay-border bg-white text-zinc-900 font-semibold hover:bg-zinc-50 transition w-full sm:w-auto"
+          className="inline-flex items-center justify-center rounded-xl px-6 py-3 border border-thubpay-border bg-thubpay-elevated text-zinc-100 font-semibold hover:bg-thubpay-surface transition w-full sm:w-auto"
         >
           {copied ? '✓ Link Copied!' : '📋 Copy Permanent Link'}
         </button>
@@ -60,7 +60,7 @@ export default function InvoiceActions({ invoiceId, isDispatched }: Props) {
           href={sharedLink}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center justify-center rounded-xl px-6 py-3 border border-thubpay-border text-zinc-600 hover:text-zinc-900 font-semibold hover:bg-zinc-50 transition"
+          className="inline-flex items-center justify-center rounded-xl px-6 py-3 border border-thubpay-border text-zinc-300 hover:text-thubpay-gold font-semibold hover:bg-thubpay-elevated transition"
         >
           Open Payment Page ↗
         </a>

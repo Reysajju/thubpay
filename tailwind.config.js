@@ -18,33 +18,46 @@ module.exports = {
     },
     extend: {
       fontFamily: {
-        sans: ['Inter', 'var(--font-sans)', ...fontFamily.sans]
+        sans: [
+          'Montserrat',
+          'Inter',
+          'var(--font-sans)',
+          ...fontFamily.sans
+        ]
       },
       colors: {
         thubpay: {
-          violet: '#6C5CE7',
-          'violet-dark': '#5849C2',
-          'violet-light': '#8B7FF0',
-          cyan: '#00B4D8',
-          'cyan-dark': '#0096B7',
-          'cyan-light': '#48CAE4',
-          dark: '#0A0A0F',
-          'dark-2': '#12121A',
-          'dark-3': '#1A1A28',
-          'dark-4': '#22223A',
-          surface: '#16161F',
-          border: '#2A2A42',
-          muted: '#8888AA'
+          obsidian: '#111111',
+          gold: '#C5A059',
+          slate: '#555555',
+          blue: '#0A6C7B',
+          'blue-accent': '#0A6C7F',
+          surface: '#161616',
+          elevated: '#1c1c1c',
+          border: '#2d2d2d',
+          muted: '#9ca3af',
+          // Legacy keys (used across components) → brand mapping
+          violet: '#C5A059',
+          'violet-dark': '#a68447',
+          'violet-light': '#d4b578',
+          cyan: '#0A6C7B',
+          'cyan-dark': '#085a66',
+          'cyan-light': '#0d8294',
+          dark: '#111111',
+          'dark-2': '#141414',
+          'dark-3': '#1a1a1a',
+          'dark-4': '#222222'
         }
       },
       backgroundImage: {
-        'thubpay-gradient': 'linear-gradient(135deg, #6C5CE7 0%, #00B4D8 100%)',
+        'thubpay-gradient':
+          'linear-gradient(135deg, #C5A059 0%, #0A6C7B 100%)',
         'thubpay-gradient-subtle':
-          'linear-gradient(135deg, rgba(108,92,231,0.15) 0%, rgba(0,180,216,0.15) 100%)',
+          'linear-gradient(135deg, rgba(197,160,89,0.18) 0%, rgba(10,108,123,0.18) 100%)',
         'thubpay-radial':
-          'radial-gradient(ellipse at 50% 0%, rgba(108,92,231,0.3) 0%, transparent 60%)',
+          'radial-gradient(ellipse at 50% 0%, rgba(197,160,89,0.25) 0%, transparent 60%)',
         'card-glow':
-          'radial-gradient(ellipse at 50% 0%, rgba(108,92,231,0.12) 0%, transparent 70%)'
+          'radial-gradient(ellipse at 50% 0%, rgba(197,160,89,0.12) 0%, transparent 70%)'
       },
       keyframes: {
         'accordion-down': {
@@ -81,10 +94,10 @@ module.exports = {
         'slide-up': 'slide-up 0.6s ease-out forwards'
       },
       boxShadow: {
-        'thubpay-violet': '0 0 30px rgba(108,92,231,0.3)',
-        'thubpay-cyan': '0 0 30px rgba(0,180,216,0.3)',
-        'card-hover': '0 20px 60px rgba(108,92,231,0.2)',
-        glow: '0 0 20px rgba(108,92,231,0.4), 0 0 40px rgba(0,180,216,0.2)'
+        'thubpay-violet': '0 0 30px rgba(197,160,89,0.35)',
+        'thubpay-cyan': '0 0 28px rgba(10,108,123,0.35)',
+        'card-hover': '0 20px 60px rgba(197,160,89,0.18)',
+        glow: '0 0 20px rgba(197,160,89,0.35), 0 0 40px rgba(10,108,123,0.2)'
       }
     }
   },

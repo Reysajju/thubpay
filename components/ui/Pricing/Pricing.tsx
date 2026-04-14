@@ -54,7 +54,7 @@ const PLAN_FEATURES: Record<string, string[]> = {
 function CheckIcon() {
   return (
     <svg
-      className="w-4 h-4 text-thubpay-cyan flex-shrink-0"
+      className="w-4 h-4 text-thubpay-gold flex-shrink-0"
       fill="none"
       viewBox="0 0 24 24"
       stroke="currentColor"
@@ -141,24 +141,24 @@ export default function Pricing({ user, products, subscription }: Props) {
   }
 
   return (
-    <section id="pricing" className="bg-[#fffaf1] py-24">
-      <div className="max-w-6xl px-4 mx-auto sm:px-6 lg:px-8">
+    <section id="pricing" className="overflow-x-hidden bg-thubpay-obsidian py-16 sm:py-24">
+      <div className="max-w-6xl px-4 mx-auto sm:px-6 lg:px-8 w-full min-w-0">
         {/* Header */}
         <div className="text-center mb-14">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-thubpay-border bg-thubpay-surface text-zinc-600 text-xs font-medium mb-5">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-thubpay-border bg-thubpay-surface text-zinc-400 text-xs font-medium mb-5">
             ThubPay pricing for startups
           </div>
-          <h2 className="text-4xl md:text-5xl font-extrabold text-zinc-900 tracking-tight mb-4">
+          <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-white tracking-tight mb-4">
             Pricing Plans
           </h2>
-          <p className="max-w-xl mx-auto text-zinc-600 text-lg">
+          <p className="max-w-xl mx-auto text-zinc-400 text-base sm:text-lg">
             Start with the Free plan and upgrade to Premium at $19.99/month for
             unlimited scale.
           </p>
 
           {/* Billing toggle */}
           {(intervals.includes('month') || intervals.includes('year')) && (
-            <div className="inline-flex items-center mt-8 p-1 rounded-xl bg-thubpay-surface border border-thubpay-border">
+            <div className="inline-flex flex-wrap items-center justify-center gap-1 mt-8 p-1 rounded-xl bg-thubpay-surface border border-thubpay-border max-w-full">
               {intervals.includes('month') && (
                 <button
                   onClick={() => setBillingInterval('month')}
@@ -167,7 +167,7 @@ export default function Pricing({ user, products, subscription }: Props) {
                   className={cn(
                     'px-5 py-2 text-sm font-medium rounded-lg transition-all duration-200',
                     billingInterval === 'month'
-                      ? 'bg-thubpay-violet text-white shadow-thubpay-violet'
+                      ? 'bg-thubpay-gold text-[#111] shadow-thubpay-violet'
                       : 'text-zinc-400 hover:text-white'
                   )}
                 >
@@ -182,12 +182,12 @@ export default function Pricing({ user, products, subscription }: Props) {
                   className={cn(
                     'px-5 py-2 text-sm font-medium rounded-lg transition-all duration-200 flex items-center gap-2',
                     billingInterval === 'year'
-                      ? 'bg-thubpay-violet text-white shadow-thubpay-violet'
+                      ? 'bg-thubpay-gold text-[#111] shadow-thubpay-violet'
                       : 'text-zinc-400 hover:text-white'
                   )}
                 >
                   Yearly
-                  <span className="text-xs px-1.5 py-0.5 rounded-full bg-thubpay-cyan/20 text-thubpay-cyan">
+                  <span className="text-xs px-1.5 py-0.5 rounded-full bg-thubpay-blue/25 text-thubpay-cyan">
                     −20%
                   </span>
                 </button>
@@ -197,7 +197,7 @@ export default function Pricing({ user, products, subscription }: Props) {
         </div>
 
         {/* Cards */}
-        <div className="flex flex-wrap justify-center gap-6">
+        <div className="flex flex-col items-stretch sm:flex-row sm:flex-wrap sm:justify-center gap-6 w-full">
           {products.map((product, idx) => {
             const price = product?.prices?.find(
               (price) => price.interval === billingInterval
@@ -223,10 +223,10 @@ export default function Pricing({ user, products, subscription }: Props) {
               <div
                 key={product.id}
                 className={cn(
-                  'flex flex-col rounded-2xl flex-1 basis-64 max-w-sm transition-all duration-300',
+                  'flex flex-col rounded-2xl w-full max-w-md mx-auto sm:mx-0 sm:flex-1 sm:basis-64 sm:max-w-sm min-w-0 transition-all duration-300',
                   'bg-thubpay-surface border',
                   isFeatured
-                    ? 'pricing-featured scale-[1.02]'
+                    ? 'pricing-featured sm:scale-[1.02]'
                     : 'border-thubpay-border hover:border-thubpay-border/80',
                   isActive && 'border-thubpay-violet'
                 )}
@@ -234,7 +234,7 @@ export default function Pricing({ user, products, subscription }: Props) {
                 {/* Featured badge */}
                 {isFeatured && (
                   <div className="px-6 pt-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-thubpay-gradient text-white">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-thubpay-gradient text-[#111]">
                       ✦ Most Popular
                     </span>
                   </div>
@@ -242,19 +242,19 @@ export default function Pricing({ user, products, subscription }: Props) {
 
                 <div className="p-6 flex flex-col flex-1">
                   {/* Plan name */}
-                  <h3 className="text-lg font-bold text-zinc-900 mb-1">
+                  <h3 className="text-lg font-bold text-white mb-1">
                     {product.name}
                   </h3>
-                  <p className="text-sm text-zinc-600 mb-6">
+                  <p className="text-sm text-zinc-400 mb-6">
                     {product.description}
                   </p>
 
                   {/* Price */}
                   <div className="mb-6">
-                    <span className="text-4xl font-extrabold text-zinc-900">
+                    <span className="text-4xl font-extrabold text-white">
                       {priceString}
                     </span>
-                    <span className="text-zinc-600 text-sm ml-1">
+                    <span className="text-zinc-500 text-sm ml-1">
                       /{billingInterval}
                     </span>
                   </div>
@@ -264,7 +264,7 @@ export default function Pricing({ user, products, subscription }: Props) {
                     {features.map((feat) => (
                       <li key={feat} className="flex items-start gap-2.5">
                         <CheckIcon />
-                        <span className="text-sm text-zinc-700">{feat}</span>
+                        <span className="text-sm text-zinc-300">{feat}</span>
                       </li>
                     ))}
                   </ul>
@@ -278,8 +278,8 @@ export default function Pricing({ user, products, subscription }: Props) {
                     className={cn(
                       'w-full py-3 rounded-xl text-sm font-semibold transition-all duration-200',
                       isFeatured
-                        ? 'btn-gradient text-white hover:shadow-card-hover'
-                        : 'border border-thubpay-border text-zinc-900 hover:border-thubpay-violet hover:bg-thubpay-violet/5',
+                        ? 'btn-gradient text-[#111] hover:shadow-card-hover'
+                        : 'border border-thubpay-border text-zinc-200 hover:border-thubpay-gold hover:bg-thubpay-gold/10',
                       priceIdLoading === price.id && 'opacity-60 cursor-not-allowed'
                     )}
                   >
@@ -320,7 +320,7 @@ export default function Pricing({ user, products, subscription }: Props) {
 
         {/* Trust strip */}
         <div className="mt-14 text-center">
-          <p className="text-xs text-zinc-600">
+          <p className="text-xs text-zinc-500">
             Free forever available · Premium $19.99/month · No hidden fees ·
             Cancel anytime
           </p>

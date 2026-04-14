@@ -34,10 +34,10 @@ export default function BlogsPage() {
       subtitle="Actionable guides for payment portal strategy, conversion, security, and growth."
     >
       {posts.map((post) => (
-        <article key={post.title} className="border border-thubpay-border rounded-xl p-5 bg-white/70">
-          <h2 className="text-xl font-semibold text-zinc-900 mb-2">{post.title}</h2>
-          <p className="text-zinc-600 mb-3">{post.excerpt}</p>
-          <Link href={post.slug} className="text-thubpay-violet font-medium">
+        <article key={post.title} className="border border-thubpay-border rounded-xl p-5 bg-thubpay-elevated/80">
+          <h2 className="text-xl font-semibold text-white mb-2">{post.title}</h2>
+          <p className="text-zinc-400 mb-3">{post.excerpt}</p>
+          <Link href={post.slug} className="text-thubpay-gold font-medium hover:underline">
             Read article
           </Link>
         </article>

@@ -38,11 +38,11 @@ export default function AddClientModal({ open, onClose }: Props) {
       />
 
       {/* Modal */}
-      <div className="relative z-10 w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-thubpay-border overflow-hidden animate-slideUp">
+      <div className="relative z-10 w-full max-w-lg bg-thubpay-surface rounded-2xl shadow-2xl border border-thubpay-border overflow-hidden animate-slideUp">
         {/* Header */}
         <div
           className="px-6 py-5"
-          style={{ background: 'linear-gradient(135deg, #7A5A2B 0%, #D4B27A 100%)' }}
+          style={{ background: 'linear-gradient(135deg, #C5A059 0%, #0A6C7B 100%)' }}
         >
           <div className="flex items-center justify-between">
             <div>
@@ -51,7 +51,7 @@ export default function AddClientModal({ open, onClose }: Props) {
             </div>
             <button
               onClick={onClose}
-              className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white hover:bg-white/30 transition-colors"
+              className="w-8 h-8 rounded-full bg-black/20 flex items-center justify-center text-white hover:bg-black/30 transition-colors"
             >
               ✕
             </button>
@@ -69,7 +69,7 @@ export default function AddClientModal({ open, onClose }: Props) {
                 name="name"
                 required
                 placeholder="John Doe"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-zinc-50 text-zinc-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#7A5A2B]/40 transition"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-zinc-50 text-zinc-900 text-sm focus:outline-none focus:ring-2 focus:ring-thubpay-gold/40 transition"
               />
             </div>
             <div>
@@ -79,7 +79,7 @@ export default function AddClientModal({ open, onClose }: Props) {
               <input
                 name="company"
                 placeholder="Acme Corp"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-zinc-50 text-zinc-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#7A5A2B]/40 transition"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-zinc-50 text-zinc-900 text-sm focus:outline-none focus:ring-2 focus:ring-thubpay-gold/40 transition"
               />
             </div>
           </div>
@@ -93,7 +93,7 @@ export default function AddClientModal({ open, onClose }: Props) {
                 name="email"
                 type="email"
                 placeholder="john@acme.com"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-zinc-50 text-zinc-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#7A5A2B]/40 transition"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-zinc-50 text-zinc-900 text-sm focus:outline-none focus:ring-2 focus:ring-thubpay-gold/40 transition"
               />
             </div>
             <div>
@@ -104,7 +104,7 @@ export default function AddClientModal({ open, onClose }: Props) {
                 name="phone"
                 type="tel"
                 placeholder="+1 555 000 0000"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-zinc-50 text-zinc-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#7A5A2B]/40 transition"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-zinc-50 text-zinc-900 text-sm focus:outline-none focus:ring-2 focus:ring-thubpay-gold/40 transition"
               />
             </div>
           </div>
@@ -116,7 +116,7 @@ export default function AddClientModal({ open, onClose }: Props) {
             <input
               name="address"
               placeholder="123 Main St, New York, NY 10001"
-              className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-zinc-50 text-zinc-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#7A5A2B]/40 transition"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-zinc-50 text-zinc-900 text-sm focus:outline-none focus:ring-2 focus:ring-thubpay-gold/40 transition"
             />
           </div>
 
@@ -127,7 +127,7 @@ export default function AddClientModal({ open, onClose }: Props) {
             <input
               name="services"
               placeholder="e.g. Web Design, SEO, Monthly Retainer"
-              className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-zinc-50 text-zinc-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#7A5A2B]/40 transition"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-zinc-50 text-zinc-900 text-sm focus:outline-none focus:ring-2 focus:ring-thubpay-gold/40 transition"
             />
           </div>
 
@@ -139,7 +139,7 @@ export default function AddClientModal({ open, onClose }: Props) {
               name="notes"
               rows={3}
               placeholder="Any internal notes about this client..."
-              className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-zinc-50 text-zinc-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#7A5A2B]/40 transition resize-none"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-zinc-50 text-zinc-900 text-sm focus:outline-none focus:ring-2 focus:ring-thubpay-gold/40 transition resize-none"
             />
           </div>
 
@@ -147,7 +147,7 @@ export default function AddClientModal({ open, onClose }: Props) {
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-2.5 rounded-xl border border-thubpay-border text-zinc-700 text-sm font-semibold hover:bg-zinc-50 transition"
+              className="flex-1 py-2.5 rounded-xl border border-thubpay-border text-zinc-300 text-sm font-semibold hover:bg-thubpay-elevated transition"
             >
               Cancel
             </button>

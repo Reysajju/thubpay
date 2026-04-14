@@ -51,7 +51,7 @@ export default function LogoCloud() {
             aria-label={partner.name}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl border border-thubpay-border bg-thubpay-surface hover:border-thubpay-violet/40 hover:bg-thubpay-dark transition-all duration-200 group"
+            className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl border border-thubpay-border bg-thubpay-surface hover:border-thubpay-gold/50 hover:bg-thubpay-elevated transition-all duration-200 group"
           >
             <span
               className="w-7 h-7 rounded-md flex items-center justify-center text-xs font-bold text-white flex-shrink-0"

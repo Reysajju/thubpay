@@ -1,4 +1,5 @@
 import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { getURL } from '@/utils/helpers';
 
 const admin = createAdminClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -60,7 +61,7 @@ export async function createPaymentLink(data: CreatePaymentLinkInput): Promise<P
   }
 
   // Generate public URL
-  const publicUrl = `${process.env.NEXT_PUBLIC_APP_URL}/pay/${paymentLink.id}`;
+  const publicUrl = getURL(`pay/${paymentLink.id}`);
   paymentLink.public_url = publicUrl;
 
   return paymentLink as PaymentLinkData;

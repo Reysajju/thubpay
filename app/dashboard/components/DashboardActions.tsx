@@ -60,7 +60,7 @@ export default function DashboardActions({ clients, brands }: Props) {
         {open && (
           <>
             <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-            <div className="absolute right-0 top-full mt-2 z-30 w-52 bg-white rounded-2xl border border-thubpay-border shadow-xl overflow-hidden animate-slideUp">
+            <div className="absolute right-0 top-full mt-2 z-30 w-52 bg-thubpay-surface rounded-2xl border border-thubpay-border shadow-xl overflow-hidden animate-slideUp">
               <p className="px-4 pt-3 pb-1.5 text-xs font-semibold text-zinc-400 uppercase tracking-wide">
                 Create New
               </p>
@@ -73,13 +73,13 @@ export default function DashboardActions({ clients, brands }: Props) {
                   key={item.type}
                   id={`new-${item.type}-btn`}
                   onClick={() => openModal(item.type)}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-zinc-50 transition text-left group"
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-thubpay-elevated transition text-left group"
                 >
-                  <span className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-base group-hover:bg-[#7A5A2B]/10 transition">
+                  <span className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-base group-hover:bg-thubpay-gold/15 transition">
                     {item.icon}
                   </span>
                   <div>
-                    <p className="text-sm font-semibold text-zinc-800">{item.label}</p>
+                    <p className="text-sm font-semibold text-zinc-100">{item.label}</p>
                     <p className="text-xs text-zinc-400">{item.desc}</p>
                   </div>
                 </button>
