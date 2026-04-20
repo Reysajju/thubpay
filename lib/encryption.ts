@@ -17,21 +17,35 @@
  */
 
 import { createClient } from '@/utils/supabase/server';
+import crypto from 'crypto';
 
 export type EncryptedValue = string; // base64-encoded ciphertext
 
+const ALGORITHM = 'aes-256-gcm';
+const IV_LENGTH = 16;
+const TAG_LENGTH = 16;
+
+function getEncryptionKey(): Buffer {
+  const key = process.env.ENCRYPTION_KEY;
+  if (!key) throw new Error('ENCRYPTION_KEY environment variable is required');
+  // If the key is hex-encoded (64 chars = 32 bytes)
+  if (key.length === 64) return Buffer.from(key, 'hex');
+  // Otherwise derive a 32-byte key from whatever was provided
+  return crypto.createHash('sha256').update(key).digest();
+}
+
 /**
- * Encrypt a plaintext string using the Supabase Vault key.
- * Falls back to a dev-only AES-256-GCM implementation when
- * the pgcrypto RPC is not available (local dev without Vault).
+ * Encrypt a plaintext string using AES-256-GCM.
+ * In production with Supabase Vault configured, delegates to pgcrypto.
+ * Otherwise uses the ENCRYPTION_KEY env var for strong local encryption.
  */
 export async function encryptField(
   plaintext: string
 ): Promise<EncryptedValue> {
   if (!plaintext) return '';
 
-  // Production path: delegate to pgcrypto Postgres function
-  if (process.env.NODE_ENV === 'production') {
+  // Production path: delegate to pgcrypto Postgres function if available
+  if (process.env.USE_PG_ENCRYPTION === 'true') {
     const supabase = createClient();
     const { data, error } = await (supabase as any).rpc('encrypt_field', {
       plaintext
@@ -40,10 +54,14 @@ export async function encryptField(
     return data as EncryptedValue;
   }
 
-  // Dev/test path: lightweight base64 (NOT secure — dev only)
-  // Replace with real pgcrypto before shipping to production.
-  const encoded = Buffer.from(plaintext, 'utf8').toString('base64');
-  return `dev:${encoded}`;
+  // Strong AES-256-GCM encryption using ENCRYPTION_KEY
+  const key = getEncryptionKey();
+  const iv = crypto.randomBytes(IV_LENGTH);
+  const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
+  const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  // Format: iv:tag:ciphertext (all hex)
+  return `enc:${iv.toString('hex')}:${tag.toString('hex')}:${encrypted.toString('hex')}`;
 }
 
 /**
@@ -53,13 +71,28 @@ export async function encryptField(
 export async function decryptField(ciphertext: EncryptedValue): Promise<string> {
   if (!ciphertext) return '';
 
-  // Dev path: reverse the dev encoding
+  // AES-256-GCM path: reverse the strong encryption
+  if (ciphertext.startsWith('enc:')) {
+    const parts = ciphertext.slice(4).split(':');
+    if (parts.length !== 3) throw new Error('Invalid encrypted format');
+    const [ivHex, tagHex, dataHex] = parts;
+    const key = getEncryptionKey();
+    const iv = Buffer.from(ivHex, 'hex');
+    const tag = Buffer.from(tagHex, 'hex');
+    const encrypted = Buffer.from(dataHex, 'hex');
+    const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
+    decipher.setAuthTag(tag);
+    const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
+    return decrypted.toString('utf8');
+  }
+
+  // Legacy dev path: reverse the base64 encoding
   if (ciphertext.startsWith('dev:')) {
     const encoded = ciphertext.slice(4);
     return Buffer.from(encoded, 'base64').toString('utf8');
   }
 
-  // Production path: delegate to pgcrypto Postgres function
+  // pgcrypto path: delegate to Postgres function
   const supabase = createClient();
   const { data, error } = await (supabase as any).rpc('decrypt_field', {
     ciphertext

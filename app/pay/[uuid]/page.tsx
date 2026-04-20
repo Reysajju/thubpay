@@ -51,6 +51,7 @@ export default async function PublicPayPage({
 
   // Issue PaymentIntent inline mapping to avoid checkout redirect
   let clientSecretStr = '';
+  let paymentIntentIdStr = '';
   if (!isPaid && invoice.total_cents > 0) {
     try {
       const paymentIntent = await stripe.paymentIntents.create({
@@ -59,6 +60,7 @@ export default async function PublicPayPage({
         metadata: { invoice_id: invoiceId }
       });
       clientSecretStr = paymentIntent.client_secret || '';
+      paymentIntentIdStr = paymentIntent.id;
     } catch (e) {
       console.error('Failed to create PaymentIntent', e);
     }
@@ -162,6 +164,9 @@ export default async function PublicPayPage({
                  amountUsd={toUsd(invoice.total_cents)} 
                  gradientFrom={gradFrom} 
                  gradientTo={gradTo} 
+                 invoiceId={invoiceId}
+                 initialName={client?.name}
+                 paymentIntentId={paymentIntentIdStr}
                />
                <p className="text-center text-xs text-zinc-500 font-medium mt-4">
                  Secure payload processing backed by <span className="font-bold text-zinc-400">Stripe</span> UI Elements

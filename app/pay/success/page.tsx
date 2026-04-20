@@ -11,17 +11,20 @@ export default function PaymentSuccessPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const sessionId = params.get('session_id');
+    const paymentIntentId = params.get('payment_intent');
 
-    if (sessionId) {
-      verifyPayment(sessionId);
+    if (paymentIntentId) {
+      verifyPayment(`payment_intent=${paymentIntentId}`);
+    } else if (sessionId) {
+      verifyPayment(`session_id=${sessionId}`);
     } else {
       setLoading(false);
     }
   }, []);
 
-  const verifyPayment = async (sessionId: string) => {
+  const verifyPayment = async (queryParamString: string) => {
     try {
-      const response = await fetch(`/api/public/payment-success?session_id=${sessionId}`);
+      const response = await fetch(`/api/public/payment-success?${queryParamString}`);
       const data = await response.json();
 
       if (data.success) {

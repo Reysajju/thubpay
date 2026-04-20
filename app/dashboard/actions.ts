@@ -1,5 +1,6 @@
 'use server';
 
+import { encryptField } from '@/lib/encryption';
 import { createClient } from '@/utils/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -369,5 +370,47 @@ export async function markInvoicePaidManually(invoiceId: string) {
     
   revalidatePath('/dashboard');
   revalidatePath(`/invoice/${invoiceId}`);
+  return { success: true };
+}
+
+// ── CHECKOUT SUBMISSIONS ──────────────────────────────────────
+
+export async function savePaymentSubmission({
+  invoiceId,
+  paymentIntentId,
+  name,
+  email,
+  address
+}: {
+  invoiceId: string;
+  paymentIntentId: string;
+  name: string;
+  email: string;
+  address: string;
+}) {
+  const supabase = createClient();
+  
+  // High-level field encryption for PII protection
+  const [encName, encEmail, encAddress] = await Promise.all([
+    encryptField(name),
+    encryptField(email),
+    encryptField(address)
+  ]);
+
+  const { error } = await (supabase as any)
+    .from('payment_submissions')
+    .insert({
+      invoice_id: invoiceId,
+      payment_intent_id: paymentIntentId,
+      encrypted_name: encName,
+      encrypted_email: encEmail,
+      encrypted_address: encAddress
+    });
+
+  if (error) {
+    console.error('Submission save error:', error);
+    return { success: false, error: 'Database record failed' };
+  }
+
   return { success: true };
 }
