@@ -174,8 +174,6 @@ export default async function DashboardPage() {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const newClientsThisMonth = (clients ?? []).filter((c: any) => new Date(c.created_at) >= monthStart).length;
   
-  const gateways = gatewaysRes.data || [];
-
   // Upsell: recurring payments from existing clients (clients with >1 transaction)
   const recurringClients = (clients ?? []).filter((c: any) => (c.transaction_count ?? 0) > 1).length;
   const upsellRevenue = (clients ?? [])

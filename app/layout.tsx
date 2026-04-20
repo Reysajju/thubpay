@@ -6,21 +6,26 @@ import { PropsWithChildren, Suspense } from 'react';
 import { getURL } from '@/utils/helpers';
 import 'styles/main.css';
 
-const title = 'ThubPay - Modern Payment Portal for Startups';
+const title = 'ThubPay — Bring Your Own Gateway. One Payment Dashboard.';
 const description =
-  'ThubPay is a payment portal for startups: secure checkout, subscriptions, invoices, payment links, and workspace analytics—backed by Stripe and enterprise-grade auth.';
+  'ThubPay lets startups connect any payment gateway — Stripe, PayPal, Square, Razorpay, and more — into one unified billing dashboard. Built for founders who want invoices, subscriptions, and real-time revenue analytics without vendor lock-in.';
 const siteUrl = getURL();
 const brandName = 'ThubPay';
 const seoKeywords = [
+  'payment gateway for startups',
+  'bring your own payment gateway',
+  'multi-gateway payment platform',
+  'startup billing software',
+  'invoice payment portal',
+  'Stripe alternative',
+  'payment dashboard for founders',
+  'subscription billing startup',
+  'white-label payment gateway',
+  'online invoice software',
+  'SaaS payment infrastructure',
+  'recurring billing for startups',
   'ThubPay',
-  'payment portal',
-  'startup billing',
-  'Stripe checkout',
-  'subscription billing',
-  'invoice payments',
-  'payment links',
-  'SaaS payments',
-  'payment dashboard'
+  'payment orchestration platform'
 ];
 
 export const viewport: Viewport = {
@@ -128,15 +133,11 @@ export default async function RootLayout({ children }: PropsWithChildren) {
 
   return (
     <html lang="en">
-      <head>
+    <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin="anonymous"
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800&family=Inter:wght@400;500;600;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap"
           rel="stylesheet"
         />
         <script

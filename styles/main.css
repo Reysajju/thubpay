@@ -1,4 +1,164 @@
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800&family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --tp-obsidian: #0c0c0d;
+  --tp-surface: #131316;
+  --tp-elevated: #1a1a1f;
+  --tp-border: #252529;
+  --tp-gold: #c9a86c;
+  --tp-gold-light: #f0d898;
+  --tp-gold-dark: #8b6b2e;
+  --tp-platinum: #e8e0d0;
+  --tp-text: #f0ede8;
+  --tp-text-muted: #8a8680;
+  /* Legacy compat */
+  --thubpay-violet: #c9a86c;
+  --thubpay-cyan: #8b6b2e;
+  --thubpay-dark: #0c0c0d;
+  --thubpay-surface: #131316;
+  --thubpay-border: #252529;
+}
+
+*, *:before, *:after { box-sizing: inherit; }
+
+*:focus:not(ol) {
+  @apply outline-none ring-2 ring-[#C9A86C] ring-opacity-50;
+}
+
+html {
+  height: 100%;
+  box-sizing: border-box;
+  touch-action: manipulation;
+  font-feature-settings: 'case' 1, 'rlig' 1, 'calt' 1, 'kern' 1;
+}
+
+html, body {
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  text-rendering: optimizeLegibility;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-font-smoothing: antialiased;
+  background-color: var(--tp-obsidian);
+  color: var(--tp-text);
+}
+
+body { position: relative; min-height: 100%; margin: 0; }
+
+img, video { max-width: 100%; height: auto; }
+
+a { -webkit-tap-highlight-color: rgba(0, 0, 0, 0); }
+p a { @apply hover:underline; }
+
+/* ── Luxury serif for headings ─────────────────────── */
+h1, h2, h3.serif {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  letter-spacing: -0.01em;
+}
+
+/* ── Luxury brand gradient ─────────────────────────── */
+.gradient-text {
+  background: linear-gradient(135deg, #c9a86c 0%, #f0d898 40%, #c9a86c 70%, #8b6b2e 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  background-size: 200% auto;
+  animation: shimmer-text 4s linear infinite;
+}
+
+@keyframes shimmer-text {
+  0% { background-position: 0% center; }
+  100% { background-position: 200% center; }
+}
+
+/* ── Primary CTA (Champagne Gold) ─────────────────── */
+.btn-gradient {
+  background: linear-gradient(135deg, #c9a86c 0%, #e8c97a 50%, #a87c3a 100%);
+  background-size: 200% 100%;
+  transition: background-position 0.4s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+.btn-gradient:hover {
+  background-position: right center;
+  transform: translateY(-1px);
+  box-shadow: 0 14px 40px rgba(201, 168, 108, 0.45);
+}
+
+/* ── Luxury Glass panels ───────────────────────────── */
+.glass-card {
+  background: rgba(19, 19, 22, 0.90);
+  border: 1px solid rgba(37, 37, 41, 0.98);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  color: #e8e4df;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
+}
+.glass-card:hover {
+  border-color: rgba(201, 168, 108, 0.35);
+  box-shadow: 0 20px 60px rgba(201, 168, 108, 0.10), 0 0 0 1px rgba(201, 168, 108, 0.08);
+  transform: translateY(-2px);
+}
+
+/* ── Shimmer animation ─────────────────────────────── */
+.shimmer {
+  background: linear-gradient(90deg, transparent 0%, rgba(201,168,108,0.20) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2.5s linear infinite;
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* ── Grid on obsidian ─────────────────────────────── */
+.bg-grid {
+  background-image:
+    linear-gradient(rgba(201, 168, 108, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(201, 168, 108, 0.05) 1px, transparent 1px);
+  background-size: 52px 52px;
+}
+
+/* ── Glow orbs ─────────────────────────────────────── */
+.glow-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.28;
+  animation: pulse-glow 4s ease-in-out infinite;
+}
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.28; transform: scale(1); }
+  50% { opacity: 0.40; transform: scale(1.06); }
+}
+
+/* ── Slide up animation ─────────────────────────────── */
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-up { animation: slide-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* ── Pricing featured ─────────────────────────────── */
+.pricing-featured {
+  border: 1px solid rgba(201, 168, 108, 0.50);
+  box-shadow: 0 0 0 1px rgba(201, 168, 108, 0.10), 0 24px 80px rgba(201, 168, 108, 0.16);
+}
+
+/* ── Luxury divider ──────────────────────────────────── */
+.divider-gold {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(201,168,108,0.4), transparent);
+}
+
+.animated { animation-duration: 1s; animation-fill-mode: both; }
+.height-screen-helper { min-height: calc(100vh - 80px); }
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: #0c0c0d; }
+::-webkit-scrollbar-thumb { background: #2a2a2e; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--tp-gold); }
+
 
 @tailwind base;
 @tailwind components;
