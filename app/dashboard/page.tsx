@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/utils/supabase/server';
 import DashboardActions from './components/DashboardActions';
 import DashboardOverviewCharts from './components/DashboardOverviewCharts';
+import ManualPaidButton from './components/ManualPaidButton';
+import MonthlyTargetWidget from './components/MonthlyTargetWidget';
 
 export const dynamic = 'force-dynamic';
 
@@ -104,6 +106,7 @@ export default async function DashboardPage() {
     { data: ledger },
     { data: disputes },
     { data: subscriptions },
+    { data: gateways },
   ] = await Promise.all([
     (supabase as any).from('workspaces').select('*').eq('id', workspaceId).maybeSingle(),
     (supabase as any)
@@ -141,6 +144,11 @@ export default async function DashboardPage() {
       .select('*')
       .eq('workspace_id', workspaceId)
       .order('created_at', { ascending: false }),
+    (supabase as any)
+      .from('gateway_credentials')
+      .select('*')
+      .eq('workspace_id', workspaceId)
+      .order('created_at', { ascending: false }),
   ]);
 
   // ---- COMPUTE REAL METRICS ----
@@ -165,6 +173,8 @@ export default async function DashboardPage() {
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const newClientsThisMonth = (clients ?? []).filter((c: any) => new Date(c.created_at) >= monthStart).length;
+  
+  const gateways = gatewaysRes.data || [];
 
   // Upsell: recurring payments from existing clients (clients with >1 transaction)
   const recurringClients = (clients ?? []).filter((c: any) => (c.transaction_count ?? 0) > 1).length;
@@ -307,7 +317,11 @@ export default async function DashboardPage() {
           </div>
 
           <div className="flex justify-center md:justify-end shrink-0 w-full md:w-auto">
-            <DashboardActions clients={clients ?? []} brands={brands ?? []} />
+            <DashboardActions 
+          clients={clients ?? []} 
+          brands={brands ?? []} 
+          gateways={gateways}
+        />
           </div>
         </div>
 
@@ -350,16 +364,16 @@ export default async function DashboardPage() {
         </div>
 
         {/* Secondary Metrics Row */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-8">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-8">
           <div className="glass-card rounded-2xl p-3 sm:p-5 hover:border-green-500/35 transition-all min-w-0">
             <p className="text-[10px] sm:text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1 sm:mb-2 leading-tight">
-              New Clients (This Month)
+              New Clients
             </p>
             <p className="text-xl sm:text-2xl font-bold text-green-400">{newClientsThisMonth}</p>
           </div>
           <div className="glass-card rounded-2xl p-3 sm:p-5 hover:border-blue-500/35 transition-all min-w-0">
             <p className="text-[10px] sm:text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1 sm:mb-2 leading-tight">
-              Active Subscriptions
+              Active Subs
             </p>
             <p className="text-xl sm:text-2xl font-bold text-blue-400">{activeSubscriptions}</p>
           </div>
@@ -377,6 +391,10 @@ export default async function DashboardPage() {
             <p className="text-xl sm:text-2xl font-bold text-amber-400">{openDisputes}</p>
             <p className="text-[10px] text-zinc-600 mt-0.5">{toUsd(disputeAmount)} at risk</p>
           </div>
+          <MonthlyTargetWidget 
+            currentRevenueCents={profit} 
+            targetCents={workspace?.monthly_target_cents != null ? workspace.monthly_target_cents : undefined} 
+          />
         </div>
 
         {/* Analytics Charts - all real data with animations */}
@@ -440,7 +458,8 @@ export default async function DashboardPage() {
                           {inv.status}
                         </span>
                       </td>
-                      <td className="py-4 text-right">
+                      <td className="py-4 text-right flex items-center justify-end gap-2 pr-4 min-h-[4rem]">
+                        <ManualPaidButton invoiceId={inv.id} status={inv.status} />
                         <a 
                           href={`/invoice/${inv.id}`} 
                           className="inline-flex items-center justify-center px-4 py-1.5 rounded-lg border border-thubpay-border text-xs font-semibold text-zinc-300 hover:bg-thubpay-elevated hover:text-white transition opacity-100 sm:opacity-0 sm:group-hover:opacity-100"

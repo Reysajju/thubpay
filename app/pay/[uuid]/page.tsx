@@ -1,5 +1,7 @@
 import { notFound } from 'next/navigation';
 import { createClient } from '@/utils/supabase/server';
+import { stripe } from '@/utils/stripe/config';
+import StripeCheckoutClient from './StripeCheckoutClient';
 
 function toUsd(cents: number) {
   return new Intl.NumberFormat('en-US', {
@@ -46,6 +48,21 @@ export default async function PublicPayPage({
   const isPaid = invoice.status === 'paid';
   const gradFrom = brand?.gradient_from ?? '#C5A059';
   const gradTo = brand?.gradient_to ?? '#0A6C7B';
+
+  // Issue PaymentIntent inline mapping to avoid checkout redirect
+  let clientSecretStr = '';
+  if (!isPaid && invoice.total_cents > 0) {
+    try {
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: invoice.total_cents,
+        currency: invoice.currency || 'usd',
+        metadata: { invoice_id: invoiceId }
+      });
+      clientSecretStr = paymentIntent.client_secret || '';
+    } catch (e) {
+      console.error('Failed to create PaymentIntent', e);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-thubpay-obsidian flex flex-col font-sans">
@@ -139,22 +156,15 @@ export default async function PublicPayPage({
                 </div>
               </div>
             ) : (
-             <div className="w-full space-y-4">
-               {activeLink ? (
-                 <a
-                   href={activeLink.external_url}
-                   className="flex w-full items-center justify-center py-4 rounded-2xl text-[#111] font-bold text-lg shadow-xl hover:scale-[1.02] transition-transform"
-                   style={{ background: `linear-gradient(135deg, ${gradFrom} 0%, ${gradTo} 100%)` }}
-                 >
-                   Pay {toUsd(invoice.total_cents)}
-                 </a>
-               ) : (
-                 <div className="text-center p-4 bg-yellow-500/10 text-yellow-200 rounded-xl text-sm border border-yellow-500/30">
-                   Payment link is not ready yet.
-                 </div>
-               )}
-               <p className="text-center text-xs text-zinc-400 font-medium">
-                 Secure payment powered by <span className="font-bold">Stripe</span>
+             <div className="w-full">
+               <StripeCheckoutClient 
+                 clientSecret={clientSecretStr} 
+                 amountUsd={toUsd(invoice.total_cents)} 
+                 gradientFrom={gradFrom} 
+                 gradientTo={gradTo} 
+               />
+               <p className="text-center text-xs text-zinc-500 font-medium mt-4">
+                 Secure payload processing backed by <span className="font-bold text-zinc-400">Stripe</span> UI Elements
                </p>
              </div>
             )}

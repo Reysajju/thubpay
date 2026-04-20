@@ -2,6 +2,8 @@
 
 import { useRef, useState, useTransition } from 'react';
 import { createInvoice } from '../actions';
+import { GatewayProps } from './DashboardActions';
+import { Loader2 } from 'lucide-react';
 
 interface Client {
   id: string;
@@ -22,13 +24,15 @@ interface Props {
   onClose: () => void;
   clients: Client[];
   brands: Brand[];
+  gateways?: GatewayProps[];
 }
 
-export default function AddInvoiceModal({ open, onClose, clients, brands }: Props) {
+export default function AddInvoiceModal({ open, onClose, clients, brands, gateways = [] }: Props) {
   const formRef = useRef<HTMLFormElement>(null);
   const [isPending, startTransition] = useTransition();
   const [selectedClient, setSelectedClient] = useState('');
   const [selectedBrand, setSelectedBrand] = useState('');
+  const [selectedGateway, setSelectedGateway] = useState('');
   const [amount, setAmount] = useState('');
   const [taxRate, setTaxRate] = useState('0');
 
@@ -112,6 +116,24 @@ export default function AddInvoiceModal({ open, onClose, clients, brands }: Prop
                 {brands.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-zinc-500 mb-1 uppercase tracking-wide">
+                Payment Gateway (Processor)
+              </label>
+              <select
+                name="gateway_slug"
+                value={selectedGateway}
+                onChange={(e) => setSelectedGateway(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-thubpay-border bg-thubpay-elevated text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-thubpay-gold/40 transition"
+              >
+                <option value="">Select processor</option>
+                {gateways.map((g) => (
+                  <option key={g.id} value={g.gateway_slug}>
+                    {g.gateway_slug.toUpperCase()} ({g.mode})
                   </option>
                 ))}
               </select>
@@ -249,7 +271,7 @@ export default function AddInvoiceModal({ open, onClose, clients, brands }: Prop
             >
               {isPending ? (
                 <>
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin text-white" />
                   Creating...
                 </>
               ) : (

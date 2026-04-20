@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
-import { Shield, CreditCard, Key, Bell, Users, Palette, Building2, AlertCircle, CheckCircle2, Clock, ArrowRight } from 'lucide-react';
+import { Shield, CreditCard, Key, Bell, Users, Palette, Building2, AlertCircle, CheckCircle2, Clock, ArrowRight, Plus, Loader2 } from 'lucide-react';
 
 type Tab = 'gateways' | 'api_keys' | 'notifications' | 'team' | 'branding';
 
@@ -93,14 +93,56 @@ function GatewaySettings({ workspaceId }: { workspaceId: string }) {
   const [gateways, setGateways] = useState<any[]>([]);
   const [showAddGateway, setShowAddGateway] = useState(false);
   const [selectedGateway, setSelectedGateway] = useState<string | null>(null);
+  
+  // New state variables for robust handling and animations
+  const [apiKey, setApiKey] = useState('');
+  const [secretKey, setSecretKey] = useState('');
+  const [testMode, setTestMode] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
 
-  useEffect(() => {
-    // Fetch gateways from API
+  const refreshGateways = () => {
     fetch('/api/dashboard/settings/gateways')
       .then(res => res.json())
-      .then(data => setGateways(data))
+      .then(data => setGateways(data.gateways || []))
       .catch(err => console.error('Failed to fetch gateways:', err));
+  };
+
+  useEffect(() => {
+    refreshGateways();
   }, [workspaceId]);
+
+  const handleConnectGateway = async () => {
+    if (!selectedGateway || !apiKey) return;
+    setIsConnecting(true);
+    
+    try {
+      const res = await fetch('/api/dashboard/settings/gateways', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workspace_id: workspaceId,
+          gateway_slug: selectedGateway,
+          api_key: apiKey,
+          secret_key: secretKey,
+          mode: testMode ? 'test' : 'live'
+        })
+      });
+
+      if (res.ok) {
+        refreshGateways();
+        setShowAddGateway(false);
+        setApiKey('');
+        setSecretKey('');
+        setTestMode(false);
+      } else {
+        console.error('Failed to save gateway');
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsConnecting(false);
+    }
+  };
 
   const supportedGateways = [
     'stripe',
@@ -229,12 +271,14 @@ function GatewaySettings({ workspaceId }: { workspaceId: string }) {
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-zinc-300 mb-1">
-                      API Key
+                      Public / API Key *
                     </label>
                     <input
                       type="password"
-                      placeholder="Enter your API key"
-                      className="w-full px-3 py-2 border border-thubpay-border rounded-lg focus:ring-2 focus:ring-thubpay-gold focus:border-thubpay-gold"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      placeholder="Enter your public or API key"
+                      className="w-full px-3 py-2 border border-thubpay-border bg-thubpay-elevated rounded-lg focus:ring-2 focus:ring-thubpay-gold focus:border-thubpay-gold text-white"
                     />
                   </div>
                   <div>
@@ -243,35 +287,44 @@ function GatewaySettings({ workspaceId }: { workspaceId: string }) {
                     </label>
                     <input
                       type="password"
-                      placeholder="Enter your secret key"
-                      className="w-full px-3 py-2 border border-thubpay-border rounded-lg focus:ring-2 focus:ring-thubpay-gold focus:border-thubpay-gold"
+                      value={secretKey}
+                      onChange={(e) => setSecretKey(e.target.value)}
+                      placeholder="Enter your secret key (if applicable)"
+                      className="w-full px-3 py-2 border border-thubpay-border bg-thubpay-elevated rounded-lg focus:ring-2 focus:ring-thubpay-gold focus:border-thubpay-gold text-white"
                     />
                   </div>
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
                       id="testMode"
-                      className="rounded border-thubpay-border"
+                      checked={testMode}
+                      onChange={(e) => setTestMode(e.target.checked)}
+                      className="rounded border-thubpay-border bg-thubpay-elevated form-checkbox text-thubpay-gold focus:ring-thubpay-gold/50"
                     />
                     <label htmlFor="testMode" className="text-sm text-zinc-300">
-                      Use test mode
+                      Use test environment
                     </label>
                   </div>
                   <div className="flex gap-3">
                     <button
                       onClick={() => setShowAddGateway(false)}
-                      className="flex-1 px-4 py-2 border border-thubpay-border rounded-lg hover:bg-thubpay-elevated transition-colors"
+                      disabled={isConnecting}
+                      className="flex-1 px-4 py-2 border border-thubpay-border rounded-lg hover:bg-thubpay-elevated transition-colors disabled:opacity-50"
                     >
                       Cancel
                     </button>
                     <button
-                      onClick={() => {
-                        // TODO: Call API to add gateway
-                        setShowAddGateway(false);
-                      }}
-                      className="flex-1 px-4 py-2 btn-gradient text-[#111] rounded-lg hover:opacity-95 transition-colors"
+                      onClick={handleConnectGateway}
+                      disabled={isConnecting || !apiKey.trim()}
+                      className="flex-1 px-4 py-2 btn-gradient text-[#111] rounded-lg hover:opacity-95 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
                     >
-                      Connect Gateway
+                      {isConnecting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" /> Connecting...
+                        </>
+                      ) : (
+                        'Connect Gateway'
+                      )}
                     </button>
                   </div>
                 </div>

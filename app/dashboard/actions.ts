@@ -114,6 +114,7 @@ export async function createInvoice(formData: FormData) {
   const notes = String(formData.get('notes') ?? '').trim();
   const paymentTerms = String(formData.get('payment_terms') ?? 'Net 30').trim();
   const dueDate = String(formData.get('due_date') ?? '').trim();
+  const gatewaySlug = String(formData.get('gateway_slug') ?? '').trim();
 
   const amount = Number(formData.get('total_usd') ?? 0);
   const taxRatePct = Number(formData.get('tax_rate_pct') ?? 0);
@@ -149,7 +150,8 @@ export async function createInvoice(formData: FormData) {
       tax_rate_pct: taxRatePct,
       total_cents: totalCents,
       balance_due_cents: totalCents,
-      due_date: dueDate || null
+      due_date: dueDate || null,
+      custom_payment_gateway: gatewaySlug || null
     })
     .select()
     .single();
@@ -312,4 +314,60 @@ export async function addWorkspaceMember(formData: FormData) {
   });
 
   revalidatePath('/dashboard');
+}
+
+// ── WORKSPACE PREFERENCES ─────────────────────────────────────
+
+export async function setMonthlyTarget(formData: FormData) {
+  const ctx = await getWorkspaceContext();
+  if (!ctx) return;
+
+  const target = Number(formData.get('target_usd') ?? 0);
+  if (target < 0) return;
+  const targetCents = Math.round(target * 100);
+
+  const { error } = await (ctx.supabase as any)
+    .from('workspaces')
+    .update({ monthly_target_cents: targetCents })
+    .eq('id', ctx.workspaceId);
+  
+  if (error) {
+    console.error('Migration Required: Ensure you have added the `monthly_target_cents` BIGINT column to the `workspaces` table in Supabase.', error);
+  }
+
+  revalidatePath('/dashboard');
+}
+
+// ── MANUAL OVERRIDES ──────────────────────────────────────────
+
+export async function markInvoicePaidManually(invoiceId: string) {
+  const ctx = await getWorkspaceContext();
+  if (!ctx) return { error: 'Unauthorized' };
+
+  const { data: invoice } = await (ctx.supabase as any)
+    .from('invoices')
+    .select('status, notes')
+    .eq('id', invoiceId)
+    .eq('workspace_id', ctx.workspaceId)
+    .single();
+
+  if (!invoice) return { error: 'Invoice not found' };
+
+  const newNotes = invoice.notes 
+    ? `${invoice.notes}\n\n[System]: Marked completed manually` 
+    : '[System]: Marked completed manually';
+
+  await (ctx.supabase as any)
+    .from('invoices')
+    .update({ 
+      status: 'paid', 
+      paid_via_gateway: 'manual',
+      notes: newNotes,
+      paid_at: new Date().toISOString()
+    })
+    .eq('id', invoiceId);
+    
+  revalidatePath('/dashboard');
+  revalidatePath(`/invoice/${invoiceId}`);
+  return { success: true };
 }

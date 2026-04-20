@@ -5,6 +5,12 @@ import AddClientModal from './AddClientModal';
 import AddBrandModal from './AddBrandModal';
 import AddInvoiceModal from './AddInvoiceModal';
 
+export interface GatewayProps {
+  id: string;
+  gateway_slug: string;
+  mode: string;
+}
+
 interface Client {
   id: string;
   name: string;
@@ -22,11 +28,12 @@ interface Brand {
 interface Props {
   clients: Client[];
   brands: Brand[];
+  gateways?: GatewayProps[];
 }
 
 type ModalType = 'client' | 'brand' | 'invoice' | null;
 
-export default function DashboardActions({ clients, brands }: Props) {
+export default function DashboardActions({ clients, brands, gateways = [] }: Props) {
   const [open, setOpen] = useState(false);
   const [modal, setModal] = useState<ModalType>(null);
 
@@ -98,6 +105,7 @@ export default function DashboardActions({ clients, brands }: Props) {
         onClose={() => setModal(null)}
         clients={clients}
         brands={brands}
+        gateways={gateways}
       />
     </>
   );
