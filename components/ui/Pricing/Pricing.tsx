@@ -109,7 +109,7 @@ export default function Pricing({ user, products, subscription }: Props) {
     }
 
     const stripe = await getStripe();
-    stripe?.redirectToCheckout({ sessionId });
+    (stripe as any)?.redirectToCheckout({ sessionId });
     setPriceIdLoading(undefined);
   };
 
