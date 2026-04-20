@@ -17,6 +17,9 @@ async function getWorkspaceContext() {
   } = await supabase.auth.getUser();
   if (!user) return null;
 
+  let workspaceId: string | null = null;
+  let role: string | null = null;
+
   const { data: member } = await (supabase as any)
     .from('workspace_members')
     .select('workspace_id, role')
@@ -24,8 +27,26 @@ async function getWorkspaceContext() {
     .limit(1)
     .maybeSingle();
 
-  if (!member?.workspace_id) return null;
-  return { supabase, user, workspaceId: member.workspace_id, role: member.role };
+  if (member) {
+    workspaceId = member.workspace_id;
+    role = member.role;
+  } else {
+    // Fallback: Check if user owns a workspace directly (chicken-and-egg fix)
+    const { data: ownedWs } = await (supabase as any)
+      .from('workspaces')
+      .select('id')
+      .eq('owner_user_id', user.id)
+      .limit(1)
+      .maybeSingle();
+
+    if (ownedWs) {
+      workspaceId = ownedWs.id;
+      role = 'owner';
+    }
+  }
+
+  if (!workspaceId) return null;
+  return { supabase, user, workspaceId, role: role || 'member' };
 }
 
 function slugify(str: string) {
@@ -45,7 +66,9 @@ export async function createBrand(formData: FormData) {
   if (!name) return;
 
   const website = String(formData.get('website') ?? '').trim();
-  const gradientFrom = String(formData.get('gradient_from') ?? '#7A5A2B').trim();
+  const gradientFrom = String(
+    formData.get('gradient_from') ?? '#7A5A2B'
+  ).trim();
   const gradientTo = String(formData.get('gradient_to') ?? '#D4B27A').trim();
   const logoUrl = String(formData.get('logo_url') ?? '').trim();
 
@@ -184,9 +207,17 @@ export async function dispatchInvoice(formData: FormData) {
   if (invoice.dispatched_at) return;
 
   const [{ data: client }, { data: brand }] = await Promise.all([
-    (ctx.supabase as any).from('clients').select('*').eq('id', invoice.client_id).maybeSingle(),
+    (ctx.supabase as any)
+      .from('clients')
+      .select('*')
+      .eq('id', invoice.client_id)
+      .maybeSingle(),
     invoice.brand_id
-      ? (ctx.supabase as any).from('brands').select('*').eq('id', invoice.brand_id).maybeSingle()
+      ? (ctx.supabase as any)
+          .from('brands')
+          .select('*')
+          .eq('id', invoice.brand_id)
+          .maybeSingle()
       : Promise.resolve({ data: null })
   ]);
 
@@ -215,7 +246,9 @@ export async function dispatchInvoice(formData: FormData) {
         workspace_id: ctx.workspaceId
       },
       customer_email: client?.email ?? undefined,
-      success_url: getURL(`/pay/${invoiceId}/success?session_id={CHECKOUT_SESSION_ID}`),
+      success_url: getURL(
+        `/pay/${invoiceId}/success?session_id={CHECKOUT_SESSION_ID}`
+      ),
       cancel_url: getURL(`/pay/${invoiceId}`)
     });
 
@@ -331,9 +364,12 @@ export async function setMonthlyTarget(formData: FormData) {
     .from('workspaces')
     .update({ monthly_target_cents: targetCents })
     .eq('id', ctx.workspaceId);
-  
+
   if (error) {
-    console.error('Migration Required: Ensure you have added the `monthly_target_cents` BIGINT column to the `workspaces` table in Supabase.', error);
+    console.error(
+      'Migration Required: Ensure you have added the `monthly_target_cents` BIGINT column to the `workspaces` table in Supabase.',
+      error
+    );
   }
 
   revalidatePath('/dashboard');
@@ -354,20 +390,20 @@ export async function markInvoicePaidManually(invoiceId: string) {
 
   if (!invoice) return { error: 'Invoice not found' };
 
-  const newNotes = invoice.notes 
-    ? `${invoice.notes}\n\n[System]: Marked completed manually` 
+  const newNotes = invoice.notes
+    ? `${invoice.notes}\n\n[System]: Marked completed manually`
     : '[System]: Marked completed manually';
 
   await (ctx.supabase as any)
     .from('invoices')
-    .update({ 
-      status: 'paid', 
+    .update({
+      status: 'paid',
       paid_via_gateway: 'manual',
       notes: newNotes,
       paid_at: new Date().toISOString()
     })
     .eq('id', invoiceId);
-    
+
   revalidatePath('/dashboard');
   revalidatePath(`/invoice/${invoiceId}`);
   return { success: true };
@@ -389,7 +425,7 @@ export async function savePaymentSubmission({
   address: string;
 }) {
   const supabase = createClient();
-  
+
   // High-level field encryption for PII protection
   const [encName, encEmail, encAddress] = await Promise.all([
     encryptField(name),
@@ -397,15 +433,13 @@ export async function savePaymentSubmission({
     encryptField(address)
   ]);
 
-  const { error } = await (supabase as any)
-    .from('payment_submissions')
-    .insert({
-      invoice_id: invoiceId,
-      payment_intent_id: paymentIntentId,
-      encrypted_name: encName,
-      encrypted_email: encEmail,
-      encrypted_address: encAddress
-    });
+  const { error } = await (supabase as any).from('payment_submissions').insert({
+    invoice_id: invoiceId,
+    payment_intent_id: paymentIntentId,
+    encrypted_name: encName,
+    encrypted_email: encEmail,
+    encrypted_address: encAddress
+  });
 
   if (error) {
     console.error('Submission save error:', error);
