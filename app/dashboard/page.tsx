@@ -28,27 +28,32 @@ export default async function DashboardPage() {
     .limit(1)
     .maybeSingle();
 
-  // FIX: If workspace is missing, auto-create it using a client-generated UUID to avoid RLS SELECT violations.
+  // FIX: If workspace is missing, auto-create it using a client-generated UUID.
+  // We append a random string to the slug to avoid unique constraint "workspaces_slug_key" violations
+  // from previous partial/stranded workspace setups.
   if (!member?.workspace_id) {
     const defaultName = (user.user_metadata?.full_name ?? 'My Startup') + ' Workspace';
-    const slug = user.id.replace(/-/g, '').toLowerCase();
-    const newWorkspaceId = crypto.randomUUID();
+    const slug = `${user.id.replace(/-/g, '').toLowerCase().slice(0, 16)}-${crypto.randomUUID().split('-')[0]}`;
+    const targetWorkspaceId = crypto.randomUUID();
 
     const { error: wsError } = await (supabase as any)
       .from('workspaces')
       .insert({
-        id: newWorkspaceId,
+        id: targetWorkspaceId,
         owner_user_id: user.id,
         name: defaultName,
         slug: slug,
         plan: 'free'
       });
 
-    if (!wsError) {
+    if (wsError && wsError.code !== '23505') {
+      console.error('Error creating workspace:', wsError);
+      member = null;
+    } else {
       const { error: memError } = await (supabase as any)
         .from('workspace_members')
         .insert({
-          workspace_id: newWorkspaceId,
+          workspace_id: targetWorkspaceId,
           user_id: user.id,
           role: 'owner'
         });
@@ -57,11 +62,8 @@ export default async function DashboardPage() {
         console.error('Error creating workspace member:', memError);
         member = null;
       } else {
-        member = { workspace_id: newWorkspaceId, role: 'owner' };
+        member = { workspace_id: targetWorkspaceId, role: 'owner' };
       }
-    } else {
-      console.error('Error creating workspace:', wsError);
-      member = null;
     }
   }
 

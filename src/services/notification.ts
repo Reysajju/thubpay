@@ -1,7 +1,5 @@
 import { createClient as createAdminClient } from '@supabase/supabase-js';
-import { Resend } from 'resend';
-
-const resend = new Resend(process.env.RESEND_API_KEY || '');
+import { sendEmail } from '@/utils/mailer';
 
 interface NotificationPayload {
   type: 'payment_succeeded' | 'payment_failed' | 'payment_refunded' | 'invoice_paid' | 'subscription_renewed' | 'subscription_canceled' | 'invoice_created' | 'invoice_overdue';
@@ -42,10 +40,19 @@ export async function sendInAppNotification(payload: Omit<NotificationPayload, '
 }
 
 /**
- * Send email notifications using Resend
+ * Send email notifications via Gmail SMTP (Nodemailer)
  */
 export async function sendEmailNotification(payload: Omit<NotificationPayload, 'channel'>): Promise<void> {
   try {
+    // Get recipient email
+    const toEmail = payload.templateData?.to_email || '';
+    if (!toEmail) {
+      console.error('[Notification] No recipient email provided for notification:', payload.type);
+      return;
+    }
+
+    // Try to get email template from DB (optional — falls back to inline)
+    const admin = getAdminClient();
     const emailTemplateMap: Record<string, string> = {
       payment_succeeded: 'payment_confirmation',
       payment_failed: 'payment_failed',
@@ -58,64 +65,60 @@ export async function sendEmailNotification(payload: Omit<NotificationPayload, '
     };
 
     const templateId = payload.templateId || emailTemplateMap[payload.type];
+    let htmlContent = '';
+    let subject = payload.title;
 
-    if (!templateId) {
-      console.error('No template ID found for notification type:', payload.type);
-      return;
+    if (templateId) {
+      const { data: template } = await admin
+        .from('email_templates')
+        .select('*')
+        .eq('id', templateId)
+        .single();
+
+      if (template) {
+        htmlContent = template.html_content;
+        subject = template.subject;
+
+        // Replace template variables
+        if (payload.templateData) {
+          Object.entries(payload.templateData).forEach(([key, value]) => {
+            htmlContent = htmlContent.replace(`{{${key}}}`, String(value));
+            subject = subject.replace(`{{${key}}}`, String(value));
+          });
+        }
+
+        // Get workspace branding
+        const { data: workspace } = await admin
+          .from('brands')
+          .select('logo_url, company_name, website_url')
+          .eq('workspace_id', payload.workspaceId)
+          .single();
+
+        if (workspace) {
+          htmlContent = htmlContent.replace('{{company_logo}}', workspace.logo_url || '');
+          htmlContent = htmlContent.replace('{{company_name}}', workspace.company_name);
+          htmlContent = htmlContent.replace('{{company_website}}', workspace.website_url || '');
+        }
+      }
     }
 
-    // Get email template content
-    const admin = getAdminClient();
-    const { data: template } = await admin
-      .from('email_templates')
-      .select('*')
-      .eq('id', templateId)
-      .single();
-
-    if (!template) {
-      console.error('Email template not found:', templateId);
-      return;
+    // Fallback: generate inline HTML if no DB template found
+    if (!htmlContent) {
+      htmlContent = `
+        <div style="font-family:Inter,Arial,sans-serif;line-height:1.6;color:#1d1b24;max-width:600px;margin:0 auto;border:1px solid #e7e0d3;border-radius:16px;padding:32px;background:#fffdf8;">
+          <h2 style="margin-top:0;font-size:24px;color:#1d1b24;">${payload.title}</h2>
+          <p style="font-size:16px;color:#4a4a4a;">${payload.message}</p>
+        </div>
+      `;
     }
 
-    // Replace template variables with actual data
-    let htmlContent = template.html_content;
-    let subject = template.subject;
-
-    if (payload.templateData) {
-      Object.entries(payload.templateData).forEach(([key, value]) => {
-        htmlContent = htmlContent.replace(`{{${key}}}`, String(value));
-        subject = subject.replace(`{{${key}}}`, String(value));
-      });
-    }
-
-    // Get recipient email
-    let toEmail = payload.templateData?.to_email || '';
-    if (!toEmail) {
-      console.error('No recipient email provided for notification:', payload.type);
-      return;
-    }
-
-    // Get workspace branding for white-labeled emails
-    const { data: workspace } = await admin
-      .from('brands')
-      .select('logo_url, company_name, website_url')
-      .eq('workspace_id', payload.workspaceId)
-      .single();
-
-    if (workspace) {
-      htmlContent = htmlContent.replace('{{company_logo}}', workspace.logo_url || '');
-      htmlContent = htmlContent.replace('{{company_name}}', workspace.company_name);
-      htmlContent = htmlContent.replace('{{company_website}}', workspace.website_url || '');
-    }
-
-    await resend.emails.send({
-      from: `${process.env.EMAIL_FROM_NAME || 'ThubPay'} <${process.env.EMAIL_FROM || 'noreply@thubpay.com'}>`,
+    await sendEmail({
       to: toEmail,
       subject,
       html: htmlContent
     });
   } catch (error) {
-    console.error('Error sending email notification:', error);
+    console.error('[Notification] Error sending email notification:', error);
   }
 }
 

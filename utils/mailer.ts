@@ -1,4 +1,55 @@
+import nodemailer from 'nodemailer';
 import { getURL } from '@/utils/helpers';
+
+// ── SMTP Transport (Gmail) ───────────────────────────────────
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  port: Number(process.env.SMTP_PORT) || 587,
+  secure: false, // true for 465, false for 587 (STARTTLS)
+  auth: {
+    user: process.env.SMTP_USER || '',
+    pass: process.env.SMTP_PASS || ''
+  }
+});
+
+function getFromAddress(): string {
+  const name = process.env.SMTP_FROM_NAME || 'ThubPay';
+  const email = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || 'noreply@thubpay.com';
+  return `"${name}" <${email}>`;
+}
+
+// ── Generic send helper ──────────────────────────────────────
+
+export async function sendEmail(params: {
+  to: string;
+  subject: string;
+  html: string;
+  from?: string;
+}): Promise<{ sent: boolean; error?: string }> {
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+
+  if (!smtpUser || !smtpPass) {
+    console.error('[Mailer] SMTP_USER or SMTP_PASS not configured in .env');
+    return { sent: false, error: 'missing_smtp_credentials' };
+  }
+
+  try {
+    const info = await transporter.sendMail({
+      from: params.from || getFromAddress(),
+      to: params.to,
+      subject: params.subject,
+      html: params.html
+    });
+    console.log(`[Mailer] Email sent to ${params.to} — messageId: ${info.messageId}`);
+    return { sent: true };
+  } catch (err: any) {
+    console.error(`[Mailer] Failed to send email to ${params.to}:`, err.message);
+    return { sent: false, error: err.message };
+  }
+}
+
+// ── Invoice dispatch email ───────────────────────────────────
 
 export async function sendInvoiceEmail(params: {
   to: string;
@@ -11,8 +62,6 @@ export async function sendInvoiceEmail(params: {
   paymentUrl: string;
 }) {
   const { to, invoiceNumber, brandName, description, totalCents, dueDateStr, paymentUrl } = params;
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.BILLING_FROM_EMAIL || 'billing@thubpay.com';
 
   const amountStr = new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -20,8 +69,6 @@ export async function sendInvoiceEmail(params: {
   }).format(totalCents / 100);
 
   const dueStr = dueDateStr ? new Date(dueDateStr).toLocaleDateString() : 'Upon Receipt';
-
-  if (!apiKey) return { sent: false, reason: 'missing_resend_api_key' as const };
 
   const html = `
     <div style="font-family:Inter,Arial,sans-serif;line-height:1.6;color:#1d1b24;max-width:600px;margin:0 auto;border:1px solid #e7e0d3;border-radius:16px;padding:32px;background:#fffdf8;">
@@ -46,22 +93,14 @@ export async function sendInvoiceEmail(params: {
     </div>
   `;
 
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      from,
-      to: [to],
-      subject: `Invoice ${invoiceNumber} from ${brandName}`,
-      html
-    })
+  return sendEmail({
+    to,
+    subject: `Invoice ${invoiceNumber} from ${brandName}`,
+    html
   });
-
-  return { sent: response.ok };
 }
+
+// ── Payment receipt email ────────────────────────────────────
 
 export async function sendPaidReceiptEmail(params: {
   to: string;
@@ -71,15 +110,11 @@ export async function sendPaidReceiptEmail(params: {
   paymentUrl: string;
 }) {
   const { to, invoiceNumber, brandName, amountPaidCents, paymentUrl } = params;
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.BILLING_FROM_EMAIL || 'billing@thubpay.com';
 
   const amountStr = new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD'
   }).format(amountPaidCents / 100);
-
-  if (!apiKey) return { sent: false, reason: 'missing_resend_api_key' as const };
 
   const html = `
     <div style="font-family:Inter,Arial,sans-serif;line-height:1.6;color:#1d1b24;max-width:600px;margin:0 auto;border:1px solid #e7e0d3;border-radius:16px;padding:32px;background:#fffdf8;">
@@ -106,19 +141,9 @@ export async function sendPaidReceiptEmail(params: {
     </div>
   `;
 
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      from,
-      to: [to],
-      subject: `Receipt for Invoice ${invoiceNumber} from ${brandName}`,
-      html
-    })
+  return sendEmail({
+    to,
+    subject: `Receipt for Invoice ${invoiceNumber} from ${brandName}`,
+    html
   });
-
-  return { sent: response.ok };
 }
