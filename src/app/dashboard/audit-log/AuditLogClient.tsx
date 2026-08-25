@@ -52,7 +52,7 @@ const ACTION_META: Record<string, { label: string; color: string; bg: string; ic
   'invoice.mark_paid': { label: 'Marked Paid', color: 'text-emerald-400', bg: 'bg-emerald-500/10', icon: CheckCircle2 },
   'refund.created': { label: 'Refund', color: 'text-amber-400', bg: 'bg-amber-500/10', icon: RotateCcw },
   'refund.partial': { label: 'Partial Refund', color: 'text-amber-400', bg: 'bg-amber-500/10', icon: RotateCcw },
-  'gateway.create': { label: 'Gateway Created', color: 'text-blue-400', bg: 'bg-blue-500/10', icon: CreditCard },
+  'gateway.create': { label: 'Gateway Created', color: 'text-cyan-400', bg: 'bg-cyan-500/10', icon: CreditCard },
   'login.success': { label: 'Login', color: 'text-zinc-400', bg: 'bg-zinc-500/10', icon: User },
   'demo.login': { label: 'Demo Login', color: 'text-zinc-400', bg: 'bg-zinc-500/10', icon: User },
   'api_key.create': { label: 'API Key Created', color: 'text-purple-400', bg: 'bg-purple-500/10', icon: CreditCard },

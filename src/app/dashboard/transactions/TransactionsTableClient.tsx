@@ -77,9 +77,9 @@ const STATUS_CONFIG: Record<
   },
   refunded: {
     label: 'Refunded',
-    bg: 'bg-blue-500/15',
-    text: 'text-blue-300',
-    border: 'border-blue-500/25',
+    bg: 'bg-cyan-500/15',
+    text: 'text-cyan-300',
+    border: 'border-cyan-500/25',
     icon: RefreshCw,
   },
   disputed: {
@@ -297,8 +297,8 @@ export default function TransactionsTableClient({ transactions, gateways, stats 
 
         <div className="glass-card glass-card-hover rounded-2xl p-4 animate-stagger stagger-4">
           <div className="flex items-center gap-2 mb-2">
-            <div className="w-7 h-7 rounded-lg bg-blue-500/10 flex items-center justify-center">
-              <span className="text-[10px] font-bold text-blue-400">Avg</span>
+            <div className="w-7 h-7 rounded-lg bg-cyan-500/10 flex items-center justify-center">
+              <span className="text-[10px] font-bold text-cyan-400">Avg</span>
             </div>
             <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
               Avg Amount
@@ -675,11 +675,11 @@ export default function TransactionsTableClient({ transactions, gateways, stats 
 
                   {/* Failure reason / refund info */}
                   {selectedTx.failure_reason && (
-                    <div className={`p-3 rounded-xl border ${selectedTx.status === 'refunded' ? 'bg-blue-500/5 border-blue-500/20' : 'bg-red-500/5 border-red-500/20'}`}>
-                      <p className={`text-[10px] font-bold uppercase tracking-wider mb-1 ${selectedTx.status === 'refunded' ? 'text-blue-400' : 'text-red-400'}`}>
+                    <div className={`p-3 rounded-xl border ${selectedTx.status === 'refunded' ? 'bg-cyan-500/5 border-cyan-500/20' : 'bg-red-500/5 border-red-500/20'}`}>
+                      <p className={`text-[10px] font-bold uppercase tracking-wider mb-1 ${selectedTx.status === 'refunded' ? 'text-cyan-400' : 'text-red-400'}`}>
                         {selectedTx.status === 'refunded' ? 'Refund Info' : 'Failure Reason'}
                       </p>
-                      <p className={`text-sm ${selectedTx.status === 'refunded' ? 'text-blue-300' : 'text-red-300'}`}>
+                      <p className={`text-sm ${selectedTx.status === 'refunded' ? 'text-cyan-300' : 'text-red-300'}`}>
                         {selectedTx.failure_reason}
                       </p>
                     </div>

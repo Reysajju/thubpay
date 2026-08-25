@@ -86,7 +86,7 @@ const PLAN_CONFIG: Record<string, { label: string; color: string; bg: string; bo
   free: { label: 'Free', color: 'text-zinc-400', bg: 'bg-zinc-500/10', border: 'border-zinc-500/25' },
   pro: { label: 'Pro', color: 'text-[#10B981]', bg: 'bg-[#10B981]/10', border: 'border-[#10B981]/25' },
   scale: { label: 'Scale', color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/25' },
-  enterprise: { label: 'Enterprise', color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/25' },
+  enterprise: { label: 'Enterprise', color: 'text-cyan-400', bg: 'bg-cyan-500/10', border: 'border-cyan-500/25' },
 };
 
 export default function SettingsClient({ workspace, gateways: initialGateways }: Props) {
@@ -773,7 +773,7 @@ export default function SettingsClient({ workspace, gateways: initialGateways }:
 const NOTIFICATION_TYPES = [
   { type: 'payment', label: 'Payments', desc: 'Payment received, invoice paid, refund issued', icon: '💰', color: 'text-emerald-400' },
   { type: 'success', label: 'Success', desc: 'Invoice sent, gateway connected, encryption upgraded', icon: '✅', color: 'text-green-400' },
-  { type: 'info', label: 'Info', desc: 'New gateway connected, ledger entries, general activity', icon: 'ℹ️', color: 'text-blue-400' },
+  { type: 'info', label: 'Info', desc: 'New gateway connected, ledger entries, general activity', icon: 'ℹ️', color: 'text-cyan-400' },
   { type: 'warning', label: 'Warnings', desc: 'Invoice overdue, SLA threshold updates', icon: '⚠️', color: 'text-amber-400' },
   { type: 'error', label: 'Errors', desc: 'SLA breaches, webhook failures, refund errors', icon: '❌', color: 'text-red-400' },
   { type: 'dispute', label: 'Disputes', desc: 'Payment disputes, chargebacks', icon: '⚖️', color: 'text-red-400' },

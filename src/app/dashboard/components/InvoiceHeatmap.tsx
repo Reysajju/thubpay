@@ -118,12 +118,12 @@ export default function InvoiceHeatmap({ cells, totalViews, peakDay, peakHour, p
             </div>
           )}
           {peakDay !== null && (
-            <div className="px-2.5 py-1 rounded-lg bg-blue-500/10 border border-blue-500/30">
+            <div className="px-2.5 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/30">
               <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1">
-                <Calendar className="w-2.5 h-2.5 text-blue-400" />
+                <Calendar className="w-2.5 h-2.5 text-cyan-400" />
                 Peak Day
               </p>
-              <p className="text-xs font-bold text-blue-400">{dayLabel(peakDay)}</p>
+              <p className="text-xs font-bold text-cyan-400">{dayLabel(peakDay)}</p>
             </div>
           )}
           {peakHour !== null && (

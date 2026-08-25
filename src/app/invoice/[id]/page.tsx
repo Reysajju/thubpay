@@ -32,7 +32,7 @@ function formatDateTime(date: Date | string | null): string {
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; border: string; icon: any }> = {
   draft: { label: 'Draft', bg: 'bg-zinc-500/15', text: 'text-zinc-400', border: 'border-zinc-500/25', icon: FileText },
-  sent: { label: 'Sent', bg: 'bg-blue-500/15', text: 'text-blue-300', border: 'border-blue-500/25', icon: Send },
+  sent: { label: 'Sent', bg: 'bg-cyan-500/15', text: 'text-cyan-300', border: 'border-cyan-500/25', icon: Send },
   viewed: { label: 'Viewed', bg: 'bg-purple-500/15', text: 'text-purple-400', border: 'border-purple-500/25', icon: Eye },
   paid: { label: 'Paid', bg: 'bg-green-500/15', text: 'text-green-400', border: 'border-green-500/25', icon: CheckCircle2 },
   overdue: { label: 'Overdue', bg: 'bg-red-500/15', text: 'text-red-400', border: 'border-red-500/25', icon: XCircle },
@@ -87,7 +87,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
       icon: Send,
       label: 'Invoice sent to client',
       date: formatDateTime(invoice.updatedAt),
-      color: 'text-blue-300',
+      color: 'text-cyan-300',
       detail: client?.email ? `Emailed to ${client.email}` : undefined,
     });
   }
@@ -126,7 +126,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
         icon: DollarSign,
         label: 'Payment refunded',
         date: formatDateTime(tx.updatedAt),
-        color: 'text-blue-400',
+        color: 'text-cyan-400',
         detail: tx.failureReason || 'Full refund processed',
       });
     }
@@ -540,7 +540,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
                               : tx.status === 'failed'
                               ? 'bg-red-400'
                               : tx.status === 'refunded'
-                              ? 'bg-blue-400'
+                              ? 'bg-cyan-400'
                               : 'bg-amber-400'
                           }`}
                         />

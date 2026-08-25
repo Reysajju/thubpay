@@ -38,6 +38,7 @@ export interface DemoClient {
   total_spend_cents: number;
   transaction_count: number;
   created_at: string;
+  last_payment_at: string | null;
 }
 
 export interface DemoGateway {
@@ -261,6 +262,14 @@ export async function getClients(workspaceId: string): Promise<DemoClient[]> {
     const rows = await db.client.findMany({
       where: { workspaceId },
       orderBy: { createdAt: 'desc' },
+      include: {
+        invoices: {
+          where: { status: 'paid' },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { createdAt: true },
+        },
+      },
     });
     return rows.map((r) => ({
       id: r.id,
@@ -272,6 +281,10 @@ export async function getClients(workspaceId: string): Promise<DemoClient[]> {
       total_spend_cents: r.totalSpendCents,
       transaction_count: r.transactionCount,
       created_at: r.createdAt.toISOString(),
+      last_payment_at:
+        r.invoices && r.invoices.length > 0
+          ? r.invoices[0].createdAt.toISOString()
+          : null,
     }));
   } catch {
     return [];
@@ -983,6 +996,8 @@ export async function getDashboardStats(workspaceId: string) {
       mrr: 0, clientCount: 0, activeGateways: 0,
       revenueChangePct: 0, revenueChangeAbs: 0,
       newClientsThisMonth: 0,
+      todayRevenue: 0, todayTransactionCount: 0,
+      ytdRevenue: 0,
     };
   }
   try {
@@ -1009,11 +1024,23 @@ export async function getDashboardStats(workspaceId: string) {
     const successRate =
       totalCount > 0 ? Math.round((paidCount / totalCount) * 100) : 0;
 
-    // Month boundaries for trend calculations
+    // Boundaries for trend / period calculations
     const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const lastMonthEnd = thisMonthStart; // exclusive upper bound
+    const ytdStart = new Date(now.getFullYear(), 0, 1);
+
+    const todayRevenue = invoices
+      .filter((i) => i.status === 'paid' && i.createdAt >= todayStart)
+      .reduce((s, i) => s + i.totalCents, 0);
+    const todayTransactionCount = invoices.filter(
+      (i) => i.status === 'paid' && i.createdAt >= todayStart
+    ).length;
+    const ytdRevenue = invoices
+      .filter((i) => i.status === 'paid' && i.createdAt >= ytdStart)
+      .reduce((s, i) => s + i.totalCents, 0);
 
     const thisMonthRevenue = invoices
       .filter((i) => i.status === 'paid' && i.createdAt >= thisMonthStart)
@@ -1058,6 +1085,9 @@ export async function getDashboardStats(workspaceId: string) {
       revenueChangePct,
       revenueChangeAbs,
       newClientsThisMonth,
+      todayRevenue,
+      todayTransactionCount,
+      ytdRevenue,
     };
   } catch {
     return {
@@ -1066,6 +1096,8 @@ export async function getDashboardStats(workspaceId: string) {
       mrr: 0, clientCount: 0, activeGateways: 0,
       revenueChangePct: 0, revenueChangeAbs: 0,
       newClientsThisMonth: 0,
+      todayRevenue: 0, todayTransactionCount: 0,
+      ytdRevenue: 0,
     };
   }
 }

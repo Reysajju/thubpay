@@ -63,7 +63,7 @@ function formatRelative(date: string | Date | null): string | null {
 
 const STATUS_STYLES: Record<string, string> = {
   draft: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/25',
-  sent: 'bg-blue-500/15 text-blue-300 border-blue-500/25',
+  sent: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/25',
   viewed: 'bg-purple-500/15 text-purple-400 border-purple-500/25',
   paid: 'bg-green-500/15 text-green-400 border-green-500/25',
   overdue: 'bg-red-500/15 text-red-400 border-red-500/25',
@@ -126,8 +126,8 @@ export default async function LinkTrackingPage({
       value: String(sentCount),
       subtext: `${totalInvoices} total invoices`,
       icon: Send,
-      iconBg: 'bg-blue-500/10',
-      iconColor: 'text-blue-400',
+      iconBg: 'bg-cyan-500/10',
+      iconColor: 'text-cyan-400',
       valueColor: 'text-white',
     },
     {

@@ -84,7 +84,7 @@ const ICON_BY_ACTION: Record<string, IconConfig> = {
   'automation.triggered': { Icon: Zap, color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
   'automation.fired': { Icon: Zap, color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
 
-  // Webhooks — blue-400 (NOT blue-500+, which is banned).
+  // Webhooks — sky-400 (no blue/indigo, per project rule).
   'webhook.delivered': { Icon: Webhook, color: 'text-cyan-400', bg: 'bg-cyan-500/10', border: 'border-cyan-500/20' },
   'webhook.create': { Icon: Webhook, color: 'text-cyan-400', bg: 'bg-cyan-500/10', border: 'border-cyan-500/20' },
   'webhook.delete': { Icon: Webhook, color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20' },

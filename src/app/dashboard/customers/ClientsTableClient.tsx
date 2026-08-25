@@ -69,7 +69,7 @@ function getAvatarGradient(seed: string): string {
   const gradients = [
     'from-amber-500/20 to-orange-600/20 text-amber-400',
     'from-emerald-500/20 to-teal-600/20 text-emerald-400',
-    'from-blue-500/20 to-indigo-600/20 text-blue-400',
+    'from-cyan-500/20 to-teal-600/20 text-cyan-400',
     'from-purple-500/20 to-pink-600/20 text-purple-400',
     'from-rose-500/20 to-red-600/20 text-rose-400',
     'from-cyan-500/20 to-sky-600/20 text-cyan-400',
@@ -85,12 +85,80 @@ function getAvatarGradient(seed: string): string {
 
 const STATUS_STYLES: Record<string, string> = {
   paid: 'bg-green-500/15 text-green-400 border-green-500/25',
-  sent: 'bg-blue-500/15 text-blue-300 border-blue-500/25',
+  sent: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/25',
   viewed: 'bg-purple-500/15 text-purple-400 border-purple-500/25',
   overdue: 'bg-red-500/15 text-red-400 border-red-500/25',
   draft: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/25',
   void: 'bg-zinc-800 text-zinc-400 border-[#252529]',
 };
+
+// ── Customer Lifecycle Stage ────────────────────────────────
+type LifecycleStage = 'new' | 'active' | 'at_risk' | 'churned' | 'lead';
+
+interface StageConfig {
+  label: string;
+  chip: string;
+  dot: string;
+  filterValue: LifecycleStage | 'all';
+}
+
+const STAGE_CONFIG: Record<LifecycleStage, StageConfig> = {
+  new: {
+    label: 'New',
+    chip: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/25',
+    dot: 'bg-emerald-400',
+    filterValue: 'new',
+  },
+  active: {
+    label: 'Active',
+    chip: 'bg-cyan-500/10 text-cyan-300 border-cyan-500/25',
+    dot: 'bg-cyan-400',
+    filterValue: 'active',
+  },
+  at_risk: {
+    label: 'At Risk',
+    chip: 'bg-amber-500/10 text-amber-300 border-amber-500/25',
+    dot: 'bg-amber-400',
+    filterValue: 'at_risk',
+  },
+  churned: {
+    label: 'Churned',
+    chip: 'bg-red-500/10 text-red-300 border-red-500/25',
+    dot: 'bg-red-400',
+    filterValue: 'churned',
+  },
+  lead: {
+    label: 'Lead',
+    chip: 'bg-zinc-500/10 text-zinc-300 border-zinc-500/25',
+    dot: 'bg-zinc-400',
+    filterValue: 'lead',
+  },
+};
+
+const STAGE_ORDER: LifecycleStage[] = ['new', 'active', 'at_risk', 'churned', 'lead'];
+
+function computeStage(client: Client): LifecycleStage {
+  const now = Date.now();
+  const DAY = 24 * 60 * 60 * 1000;
+  const txCount = client.transaction_count || 0;
+
+  // Lead: never paid (no transactions) and was created within the last 14 days
+  if (txCount === 0) {
+    const createdAt = new Date(client.created_at).getTime();
+    if (now - createdAt < 14 * DAY) return 'lead';
+    return 'lead';
+  }
+
+  // No recorded last payment — fall back to creation date if there are transactions
+  const lastPayIso = client.last_payment_at;
+  const lastPayMs = lastPayIso ? new Date(lastPayIso).getTime() : new Date(client.created_at).getTime();
+  const daysSincePayment = Math.floor((now - lastPayMs) / DAY);
+
+  if (daysSincePayment < 7 && txCount >= 1) return 'new';
+  if (daysSincePayment < 30) return 'active';
+  if (daysSincePayment < 60) return 'at_risk';
+  return 'churned';
+}
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -113,6 +181,7 @@ export default function ClientsTableClient({ clients, stats }: Props) {
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [clientInvoices, setClientInvoices] = useState<Invoice[] | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [stageFilter, setStageFilter] = useState<LifecycleStage | 'all'>('all');
 
   const maxSpend = useMemo(
     () => Math.max(...clients.map((c) => c.total_spend_cents || 0), 1),
@@ -129,6 +198,11 @@ export default function ClientsTableClient({ clients, stats }: Props) {
         )
       : [...clients];
 
+    // Stage filter
+    if (stageFilter !== 'all') {
+      result = result.filter((c) => computeStage(c) === stageFilter);
+    }
+
     if (sortBy === 'spend') {
       result.sort((a, b) => b.total_spend_cents - a.total_spend_cents);
     } else if (sortBy === 'name') {
@@ -137,7 +211,18 @@ export default function ClientsTableClient({ clients, stats }: Props) {
       result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     }
     return result;
-  }, [clients, search, sortBy]);
+  }, [clients, search, sortBy, stageFilter]);
+
+  // Per-stage counts for the filter pills
+  const stageCounts = useMemo(() => {
+    const counts: Record<LifecycleStage, number> = {
+      new: 0, active: 0, at_risk: 0, churned: 0, lead: 0,
+    };
+    for (const c of clients) {
+      counts[computeStage(c)]++;
+    }
+    return counts;
+  }, [clients]);
 
   const openClientDetail = async (client: Client) => {
     setSelectedClient(client);
@@ -171,7 +256,7 @@ export default function ClientsTableClient({ clients, stats }: Props) {
           <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4 animate-fadeIn">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <span className="flex items-center gap-1.5 text-[11px] font-semibold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20">
+                <span className="flex items-center gap-1.5 text-[11px] font-semibold text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/20">
                   <Users className="w-3 h-3" />
                   {stats.total} customers
                 </span>
@@ -196,8 +281,8 @@ export default function ClientsTableClient({ clients, stats }: Props) {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6">
             <div className="glass-card glass-card-hover rounded-2xl p-4 animate-stagger stagger-1">
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-7 h-7 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                  <Users className="w-3.5 h-3.5 text-blue-400" />
+                <div className="w-7 h-7 rounded-lg bg-cyan-500/10 flex items-center justify-center">
+                  <Users className="w-3.5 h-3.5 text-cyan-400" />
                 </div>
                 <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
                   Total Clients
@@ -296,6 +381,60 @@ export default function ClientsTableClient({ clients, stats }: Props) {
             )}
           </div>
 
+          {/* Stage Filter Pills */}
+          <div className="flex flex-wrap items-center gap-2 mb-6 animate-fadeIn">
+            <span className="text-[11px] text-zinc-500 font-semibold uppercase tracking-wider mr-1 hidden sm:inline">
+              Lifecycle:
+            </span>
+            <button
+              type="button"
+              onClick={() => setStageFilter('all')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all ${
+                stageFilter === 'all'
+                  ? 'bg-white/10 text-white border-white/20'
+                  : 'bg-transparent text-zinc-400 border-[#252529] hover:text-zinc-200 hover:border-[#3a3a3f]'
+              }`}
+            >
+              All
+              <span className="text-[10px] text-zinc-500 font-bold">
+                {clients.length}
+              </span>
+            </button>
+            {STAGE_ORDER.map((stage) => {
+              const cfg = STAGE_CONFIG[stage];
+              const count = stageCounts[stage] || 0;
+              const isActive = stageFilter === stage;
+              return (
+                <button
+                  key={stage}
+                  type="button"
+                  onClick={() => setStageFilter(isActive ? 'all' : stage)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all ${
+                    isActive
+                      ? `${cfg.chip} scale-105`
+                      : 'bg-transparent text-zinc-400 border-[#252529] hover:text-zinc-200 hover:border-[#3a3a3f]'
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+                  {cfg.label}
+                  <span className={`text-[10px] font-bold ${isActive ? '' : 'text-zinc-500'}`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+            {stageFilter !== 'all' && (
+              <button
+                type="button"
+                onClick={() => setStageFilter('all')}
+                className="flex items-center gap-1 text-[11px] text-[#10B981] hover:text-[#34D399] transition-colors ml-1"
+              >
+                <X className="w-3 h-3" />
+                Clear
+              </button>
+            )}
+          </div>
+
           {/* Clients Grid */}
           {filtered.length === 0 ? (
             <div className="glass-card rounded-3xl p-12 text-center animate-fadeIn">
@@ -323,13 +462,23 @@ export default function ClientsTableClient({ clients, stats }: Props) {
                   .toUpperCase();
                 const spendPct = Math.round((client.total_spend_cents / maxSpend) * 100);
                 const isRepeat = client.transaction_count > 1;
+                const stage = computeStage(client);
+                const stageCfg = STAGE_CONFIG[stage];
+                const lastPayDisplay = client.last_payment_at
+                  ? timeAgo(client.last_payment_at)
+                  : null;
 
                 return (
                   <div
                     key={client.id}
                     onClick={() => openClientDetail(client)}
-                    className={`glass-card glass-card-hover rounded-2xl p-5 cursor-pointer animate-stagger stagger-${Math.min(i + 1, 6)} group`}
+                    className={`glass-card glass-card-hover rounded-2xl p-5 cursor-pointer animate-stagger stagger-${Math.min(i + 1, 6)} group relative overflow-hidden`}
                   >
+                    {/* Decorative gradient stripe on the left edge colored by stage */}
+                    <span
+                      className={`pointer-events-none absolute left-0 top-0 bottom-0 w-1 ${stageCfg.dot}`}
+                      aria-hidden
+                    />
                     {/* Header */}
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center gap-3 min-w-0">
@@ -350,7 +499,16 @@ export default function ClientsTableClient({ clients, stats }: Props) {
                           )}
                         </div>
                       </div>
-                      <ChevronRight className="w-4 h-4 text-zinc-600 group-hover:text-[#10B981] group-hover:translate-x-0.5 transition-all flex-shrink-0" />
+                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                        <span
+                          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold border ${stageCfg.chip}`}
+                          title={`Lifecycle stage: ${stageCfg.label}`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${stageCfg.dot}`} />
+                          {stageCfg.label}
+                        </span>
+                        <ChevronRight className="w-3.5 h-3.5 text-zinc-600 group-hover:text-[#10B981] group-hover:translate-x-0.5 transition-all" />
+                      </div>
                     </div>
 
                     {/* Email */}
@@ -393,9 +551,12 @@ export default function ClientsTableClient({ clients, stats }: Props) {
                           </span>
                         )}
                       </div>
-                      <span className="text-[10px] text-zinc-600 flex items-center gap-1">
+                      <span
+                        className="text-[10px] text-zinc-600 flex items-center gap-1"
+                        title={client.last_payment_at ? `Last payment on ${new Date(client.last_payment_at).toLocaleDateString()}` : 'No payments yet'}
+                      >
                         <Clock className="w-2.5 h-2.5" />
-                        {timeAgo(client.created_at)}
+                        {lastPayDisplay ? `paid ${lastPayDisplay}` : `added ${timeAgo(client.created_at)}`}
                       </span>
                     </div>
                   </div>
@@ -441,7 +602,7 @@ export default function ClientsTableClient({ clients, stats }: Props) {
                     .join('')
                     .toUpperCase()}
                 </div>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <h3 className="text-lg font-bold text-white truncate">{selectedClient.name}</h3>
                   {selectedClient.company && (
                     <p className="text-sm text-zinc-400 flex items-center gap-1">
@@ -449,6 +610,21 @@ export default function ClientsTableClient({ clients, stats }: Props) {
                       {selectedClient.company}
                     </p>
                   )}
+                  <div className="mt-1.5">
+                    {(() => {
+                      const stage = computeStage(selectedClient);
+                      const cfg = STAGE_CONFIG[stage];
+                      return (
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${cfg.chip}`}
+                          title={`Lifecycle stage: ${cfg.label}`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+                          {cfg.label}
+                        </span>
+                      );
+                    })()}
+                  </div>
                 </div>
               </div>
 

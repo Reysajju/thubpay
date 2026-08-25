@@ -114,7 +114,7 @@ export default function ThemeToggle() {
       aria-label={label}
       title={label}
     >
-      <Icon className={`w-4 h-4 transition-transform group-hover:scale-110 ${theme === 'light' ? 'text-amber-500' : theme === 'system' ? 'text-blue-400' : 'text-zinc-300'}`} />
+      <Icon className={`w-4 h-4 transition-transform group-hover:scale-110 ${theme === 'light' ? 'text-amber-500' : theme === 'system' ? 'text-cyan-400' : 'text-zinc-300'}`} />
       {/* Small indicator dot showing current theme */}
       <span
         className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-[#0a0a0c] ${
@@ -122,7 +122,7 @@ export default function ThemeToggle() {
             ? 'bg-zinc-600'
             : theme === 'light'
               ? 'bg-amber-400'
-              : 'bg-blue-400'
+              : 'bg-cyan-400'
         }`}
       />
     </button>

@@ -26,7 +26,7 @@ interface Props {
 // Distinct colors for each endpoint overlay (cycling palette)
 const COLORS = [
   { name: 'emerald', stroke: '#34D399', fill: 'rgba(52, 211, 153, 0.15)', text: 'text-emerald-400', dot: 'bg-emerald-400' },
-  { name: 'blue', stroke: '#60a5fa', fill: 'rgba(96, 165, 250, 0.15)', text: 'text-blue-400', dot: 'bg-blue-400' },
+  { name: 'cyan', stroke: '#22d3ee', fill: 'rgba(34, 211, 238, 0.15)', text: 'text-cyan-400', dot: 'bg-cyan-400' },
   { name: 'purple', stroke: '#c084fc', fill: 'rgba(192, 132, 252, 0.15)', text: 'text-purple-400', dot: 'bg-purple-400' },
   { name: 'amber', stroke: '#fbbf24', fill: 'rgba(251, 191, 36, 0.15)', text: 'text-amber-400', dot: 'bg-amber-400' },
   { name: 'pink', stroke: '#f472b6', fill: 'rgba(244, 114, 182, 0.15)', text: 'text-pink-400', dot: 'bg-pink-400' },

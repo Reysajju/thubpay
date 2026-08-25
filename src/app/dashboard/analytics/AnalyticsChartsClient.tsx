@@ -40,6 +40,7 @@ import {
   Pie,
   Cell,
 } from 'recharts';
+import RevenueForecastWidget from '../components/RevenueForecastWidget';
 
 type TimeRange = '7d' | '30d' | '90d' | '1y';
 
@@ -156,7 +157,7 @@ function getAvatarGradient(seed: string): string {
   const gradients = [
     'from-amber-500/20 to-orange-600/20 text-amber-400',
     'from-emerald-500/20 to-teal-600/20 text-emerald-400',
-    'from-blue-500/20 to-indigo-600/20 text-blue-400',
+    'from-cyan-500/20 to-teal-600/20 text-cyan-400',
     'from-purple-500/20 to-pink-600/20 text-purple-400',
     'from-rose-500/20 to-red-600/20 text-rose-400',
     'from-cyan-500/20 to-sky-600/20 text-cyan-400',
@@ -558,6 +559,9 @@ export default function AnalyticsChartsClient({ invoiceStats, workspaceId }: Pro
           )}
         </div>
 
+        {/* Revenue Forecast Widget — 14-day least-squares projection */}
+        <RevenueForecastWidget historicalData={revenueData} />
+
         {/* Success/Failure Trend + Payment Success Pie */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-6">
           {/* Success/Failure Trend */}
@@ -661,8 +665,8 @@ export default function AnalyticsChartsClient({ invoiceStats, workspaceId }: Pro
         {/* Revenue by Gateway */}
         <div className="glass-card rounded-2xl p-5 mb-6 animate-fadeIn">
           <div className="flex items-center gap-2.5 mb-5">
-            <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
-              <BarChart3 className="w-4 h-4 text-blue-400" />
+            <div className="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center">
+              <BarChart3 className="w-4 h-4 text-cyan-400" />
             </div>
             <div>
               <h2 className="text-base font-bold text-white">Revenue by Gateway</h2>
@@ -809,7 +813,7 @@ export default function AnalyticsChartsClient({ invoiceStats, workspaceId }: Pro
             {invoiceStats.map((stat) => {
               const colorMap: Record<string, { bg: string; text: string; border: string }> = {
                 draft: { bg: 'bg-zinc-500/10', text: 'text-zinc-400', border: 'border-zinc-500/25' },
-                sent: { bg: 'bg-blue-500/10', text: 'text-blue-300', border: 'border-blue-500/25' },
+                sent: { bg: 'bg-cyan-500/10', text: 'text-cyan-300', border: 'border-cyan-500/25' },
                 viewed: { bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/25' },
                 paid: { bg: 'bg-green-500/10', text: 'text-green-400', border: 'border-green-500/25' },
                 overdue: { bg: 'bg-red-500/10', text: 'text-red-400', border: 'border-red-500/25' },

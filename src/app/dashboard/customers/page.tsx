@@ -29,7 +29,7 @@ export default async function CustomersPage() {
         company: c.company,
         total_spend_cents: c.total_spend_cents,
         transaction_count: c.transaction_count,
-        last_payment_at: null,
+        last_payment_at: c.last_payment_at,
         created_at: c.created_at,
       }))}
       stats={{

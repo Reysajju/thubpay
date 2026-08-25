@@ -852,7 +852,7 @@ export default function DeveloperToolsClient({ apiKeys, webhookEvents, gateways,
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-xs font-bold text-white truncate">{ep.label}</span>
                             {ep.has_secret && (
-                              <span className="flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20 font-semibold">
+                              <span className="flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 font-semibold">
                                 <Lock className="w-2.5 h-2.5" />
                                 SIGNED
                               </span>

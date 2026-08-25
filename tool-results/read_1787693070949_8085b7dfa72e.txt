@@ -1,0 +1,843 @@
+     1→'use client';
+     2→
+     3→import { useState, useEffect, useCallback } from 'react';
+     4→import {
+     5→  TrendingUp,
+     6→  TrendingDown,
+     7→  Download,
+     8→  FileText,
+     9→  CreditCard,
+    10→  DollarSign,
+    11→  Activity,
+    12→  PieChart,
+    13→  Users,
+    14→  BarChart3,
+    15→  ArrowUpRight,
+    16→  ArrowDownRight,
+    17→  ArrowRight,
+    18→  Sparkles,
+    19→  Zap,
+    20→  Target,
+    21→  AlertCircle,
+    22→  CheckCircle2,
+    23→  Clock,
+    24→  RefreshCw,
+    25→} from 'lucide-react';
+    26→import {
+    27→  LineChart,
+    28→  Line,
+    29→  AreaChart,
+    30→  Area,
+    31→  BarChart,
+    32→  Bar,
+    33→  XAxis,
+    34→  YAxis,
+    35→  CartesianGrid,
+    36→  Tooltip,
+    37→  Legend,
+    38→  ResponsiveContainer,
+    39→  PieChart as RechartsPieChart,
+    40→  Pie,
+    41→  Cell,
+    42→} from 'recharts';
+    43→
+    44→type TimeRange = '7d' | '30d' | '90d' | '1y';
+    45→
+    46→interface InvoiceStatusStat {
+    47→  status: string;
+    48→  count: number;
+    49→  total_cents: number;
+    50→}
+    51→
+    52→interface RevenueDataPoint {
+    53→  date: string;
+    54→  amount: number;
+    55→}
+    56→
+    57→interface RevenueByGateway {
+    58→  gateway: string;
+    59→  amount: number;
+    60→  count: number;
+    61→}
+    62→
+    63→interface SuccessFailureRate {
+    64→  total: number;
+    65→  succeeded: number;
+    66→  failed: number;
+    67→  successRate: number;
+    68→  failureRate: number;
+    69→  trend?: { date: string; success: number; failed: number }[];
+    70→}
+    71→
+    72→interface CustomerSpend {
+    73→  name: string;
+    74→  email: string;
+    75→  total_spend_cents: number;
+    76→  transaction_count: number;
+    77→  last_payment_at?: string;
+    78→}
+    79→
+    80→interface Props {
+    81→  invoiceStats: InvoiceStatusStat[];
+    82→  workspaceId: string;
+    83→}
+    84→
+    85→type AiInsightSeverity = 'positive' | 'warning' | 'critical' | 'info';
+    86→
+    87→interface AiInsight {
+    88→  text: string;
+    89→  severity: AiInsightSeverity;
+    90→}
+    91→
+    92→interface AiInsightsResponse {
+    93→  insights: AiInsight[];
+    94→  generatedAt: string;
+    95→  cached: boolean;
+    96→}
+    97→
+    98→const SEVERITY_CONFIG: Record<
+    99→  AiInsightSeverity,
+   100→  { Icon: typeof Sparkles; color: string; bg: string }
+   101→> = {
+   102→  positive: {
+   103→    Icon: CheckCircle2,
+   104→    color: 'text-emerald-400',
+   105→    bg: 'bg-emerald-500/10 border-emerald-500/20',
+   106→  },
+   107→  warning: {
+   108→    Icon: AlertCircle,
+   109→    color: 'text-amber-400',
+   110→    bg: 'bg-amber-500/10 border-amber-500/20',
+   111→  },
+   112→  critical: {
+   113→    Icon: AlertCircle,
+   114→    color: 'text-red-400',
+   115→    bg: 'bg-red-500/10 border-red-500/20',
+   116→  },
+   117→  info: {
+   118→    Icon: Sparkles,
+   119→    color: 'text-sky-400',
+   120→    bg: 'bg-sky-400/10 border-sky-400/20',
+   121→  },
+   122→};
+   123→
+   124→const COLORS = ['#10B981', '#0A6C7B', '#10B981', '#F59E0B', '#EF4444', '#a78bfa', '#22d3ee'];
+   125→
+   126→const GATEWAY_COLORS: Record<string, string> = {
+   127→  Stripe: '#635BFF',
+   128→  PayPal: '#0070BA',
+   129→  Square: '#00A97D',
+   130→  Adyen: '#0ABF53',
+   131→  Razorpay: '#3395ff',
+   132→  manual: '#8a8680',
+   133→};
+   134→
+   135→function formatCurrency(amount: number) {
+   136→  return new Intl.NumberFormat('en-US', {
+   137→    style: 'currency',
+   138→    currency: 'USD',
+   139→  }).format(amount / 100);
+   140→}
+   141→
+   142→function formatDate(dateString: string) {
+   143→  return new Date(dateString).toLocaleDateString('en-US', {
+   144→    month: 'short',
+   145→    day: 'numeric',
+   146→  });
+   147→}
+   148→
+   149→function formatNumber(num: number) {
+   150→  if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
+   151→  if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
+   152→  return num.toString();
+   153→}
+   154→
+   155→function getAvatarGradient(seed: string): string {
+   156→  const gradients = [
+   157→    'from-amber-500/20 to-orange-600/20 text-amber-400',
+   158→    'from-emerald-500/20 to-teal-600/20 text-emerald-400',
+   159→    'from-blue-500/20 to-indigo-600/20 text-blue-400',
+   160→    'from-purple-500/20 to-pink-600/20 text-purple-400',
+   161→    'from-rose-500/20 to-red-600/20 text-rose-400',
+   162→    'from-cyan-500/20 to-sky-600/20 text-cyan-400',
+   163→  ];
+   164→  let hash = 0;
+   165→  for (let i = 0; i < seed.length; i++) {
+   166→    hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+   167→  }
+   168→  return gradients[Math.abs(hash) % gradients.length];
+   169→}
+   170→
+   171→export default function AnalyticsChartsClient({ invoiceStats, workspaceId }: Props) {
+   172→  const [timeRange, setTimeRange] = useState<TimeRange>('30d');
+   173→  const [loading, setLoading] = useState(true);
+   174→  const [revenueData, setRevenueData] = useState<RevenueDataPoint[]>([]);
+   175→  const [revenueByGateway, setRevenueByGateway] = useState<RevenueByGateway[]>([]);
+   176→  const [successFailureRate, setSuccessFailureRate] = useState<SuccessFailureRate | null>(null);
+   177→  const [topCustomers, setTopCustomers] = useState<CustomerSpend[]>([]);
+   178→
+   179→  // ── AI-powered Smart Insights state ──────────────────────────
+   180→  const [aiInsights, setAiInsights] = useState<AiInsight[]>([]);
+   181→  const [aiLoading, setAiLoading] = useState(true);
+   182→  const [aiError, setAiError] = useState<string | null>(null);
+   183→
+   184→  const fetchAiInsights = useCallback(async () => {
+   185→    setAiLoading(true);
+   186→    setAiError(null);
+   187→    try {
+   188→      const res = await fetch(
+   189→        `/api/dashboard/analytics/ai-insights?range=${timeRange}`,
+   190→        { cache: 'no-store' }
+   191→      );
+   192→      if (!res.ok) {
+   193→        throw new Error(`HTTP ${res.status}`);
+   194→      }
+   195→      const data = (await res.json()) as AiInsightsResponse;
+   196→      setAiInsights(data.insights || []);
+   197→    } catch (err) {
+   198→      console.error('Failed to fetch AI insights:', err);
+   199→      setAiError('Unable to load AI insights. Please try again.');
+   200→      // Render the default fallback insight locally so the page is never empty.
+   201→      setAiInsights([
+   202→        {
+   203→          text: 'Analytics data is being processed. Check back shortly.',
+   204→          severity: 'info',
+   205→        },
+   206→      ]);
+   207→    } finally {
+   208→      setAiLoading(false);
+   209→    }
+   210→  }, [timeRange]);
+   211→
+   212→  useEffect(() => {
+   213→    fetchData();
+   214→    fetchAiInsights();
+   215→  }, [timeRange, fetchAiInsights]);
+   216→
+   217→  const fetchData = async () => {
+   218→    try {
+   219→      setLoading(true);
+   220→      const [revenueRes, gatewayRes, successRes, customersRes] = await Promise.all([
+   221→        fetch(`/api/dashboard/analytics/revenue?range=${timeRange}`),
+   222→        fetch(`/api/dashboard/analytics/gateway-revenue?range=${timeRange}`),
+   223→        fetch(`/api/dashboard/analytics/success-failure-rate?range=${timeRange}`),
+   224→        fetch(`/api/dashboard/analytics/top-customers?range=${timeRange}`),
+   225→      ]);
+   226→
+   227→      const revenueJson = await revenueRes.json();
+   228→      const gatewayJson = await gatewayRes.json();
+   229→      const successJson = await successRes.json();
+   230→      const customersJson = await customersRes.json();
+   231→
+   232→      setRevenueData(revenueJson.revenue || []);
+   233→      setRevenueByGateway(gatewayJson.gateway_revenue || []);
+   234→      setSuccessFailureRate({
+   235→        total: successJson.total || 0,
+   236→        succeeded: successJson.succeeded || 0,
+   237→        failed: successJson.failed || 0,
+   238→        successRate: parseFloat(successJson.success_rate || '0'),
+   239→        failureRate: parseFloat(successJson.failure_rate || '0'),
+   240→        trend: successJson.trend || [],
+   241→      });
+   242→      setTopCustomers(customersJson.top_customers || []);
+   243→    } catch (error) {
+   244→      console.error('Failed to fetch analytics data:', error);
+   245→    } finally {
+   246→      setLoading(false);
+   247→    }
+   248→  };
+   249→
+   250→  const refreshAiInsights = useCallback(() => {
+   251→    fetchAiInsights();
+   252→  }, [fetchAiInsights]);
+   253→
+   254→  if (loading) {
+   255→    return (
+   256→      <section className="p-4 sm:p-6 lg:p-8">
+   257→        <div className="max-w-7xl mx-auto">
+   258→          <div className="flex items-center justify-center py-24">
+   259→            <div className="text-center">
+   260→              <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-[#10B981]/10 mb-4">
+   261→                <Activity className="w-6 h-6 text-[#10B981] animate-pulse" />
+   262→              </div>
+   263→              <p className="text-zinc-400 text-sm">Loading analytics...</p>
+   264→            </div>
+   265→          </div>
+   266→        </div>
+   267→      </section>
+   268→    );
+   269→  }
+   270→
+   271→  const totalRevenue = revenueData.reduce((sum, d) => sum + d.amount, 0);
+   272→  const totalTransactions = successFailureRate?.total ?? 0;
+   273→  const paidInvoices = invoiceStats.find((s) => s.status === 'paid');
+   274→  const allInvoices = invoiceStats.reduce((s, i) => s + i.count, 0);
+   275→  const avgLtv =
+   276→    topCustomers.length > 0
+   277→      ? topCustomers.reduce((s, c) => s + c.total_spend_cents, 0) / topCustomers.length
+   278→      : 0;
+   279→
+   280→  const paymentSuccessRate = allInvoices > 0 ? (paidInvoices?.count ?? 0) / allInvoices * 100 : 0;
+   281→
+   282→  const pieData = [
+   283→    { name: 'Paid', value: paidInvoices?.count ?? 0, fill: '#10B981' },
+   284→    { name: 'Pending', value: allInvoices - (paidInvoices?.count ?? 0), fill: '#F59E0B' },
+   285→    { name: 'Overdue', value: invoiceStats.find((s) => s.status === 'overdue')?.count ?? 0, fill: '#EF4444' },
+   286→    { name: 'Void', value: invoiceStats.find((s) => s.status === 'void')?.count ?? 0, fill: '#71717a' },
+   287→  ].filter((d) => d.value > 0);
+   288→
+   289→  const trendData = successFailureRate?.trend || [];
+   290→
+   291→  return (
+   292→    <section className="p-4 sm:p-6 lg:p-8">
+   293→      <div className="max-w-7xl mx-auto">
+   294→        {/* Header */}
+   295→        <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4 animate-fadeIn">
+   296→          <div>
+   297→            <div className="flex items-center gap-2 mb-1">
+   298→              <span className="flex items-center gap-1.5 text-[11px] font-semibold text-[#10B981] bg-[#10B981]/10 px-2 py-0.5 rounded-full border border-[#10B981]/20">
+   299→                <Sparkles className="w-3 h-3" />
+   300→                {timeRange === '7d' ? 'Last 7 days' : timeRange === '30d' ? 'Last 30 days' : timeRange === '90d' ? 'Last 90 days' : 'Last year'}
+   301→              </span>
+   302→            </div>
+   303→            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+   304→              Analytics
+   305→            </h1>
+   306→            <p className="text-zinc-500 text-sm mt-1">
+   307→              Track your revenue, transactions, and customer performance in real time.
+   308→            </p>
+   309→          </div>
+   310→
+   311→          {/* Time Range Selector */}
+   312→          <div className="flex items-center gap-1 bg-[#1a1a1f] border border-[#252529] rounded-xl p-1">
+   313→            {(['7d', '30d', '90d', '1y'] as const).map((range) => (
+   314→              <button
+   315→                key={range}
+   316→                onClick={() => setTimeRange(range)}
+   317→                className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition-all ${
+   318→                  timeRange === range
+   319→                    ? 'bg-[#10B981]/20 text-[#10B981] shadow-sm'
+   320→                    : 'text-zinc-400 hover:text-white hover:bg-white/5'
+   321→                }`}
+   322→              >
+   323→                {range === '7d' ? '7D' : range === '30d' ? '30D' : range === '90d' ? '90D' : '1Y'}
+   324→              </button>
+   325→            ))}
+   326→          </div>
+   327→        </div>
+   328→
+   329→        {/* Key Metrics Cards */}
+   330→        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+   331→          <div className="glass-card glass-card-hover rounded-2xl p-4 sm:p-5 animate-stagger stagger-1">
+   332→            <div className="flex items-start justify-between mb-3">
+   333→              <div className="w-9 h-9 rounded-xl bg-green-500/10 flex items-center justify-center">
+   334→                <DollarSign className="w-4 h-4 text-green-400" />
+   335→              </div>
+   336→              <span className="flex items-center gap-0.5 text-[10px] font-bold text-green-400">
+   337→                <TrendingUp className="w-3 h-3" />
+   338→              </span>
+   339→            </div>
+   340→            <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
+   341→              Gross Revenue
+   342→            </p>
+   343→            <p className="text-xl sm:text-2xl font-black text-white animate-count">
+   344→              {formatCurrency(totalRevenue)}
+   345→            </p>
+   346→            <p className="text-[11px] text-zinc-500 mt-1">this period</p>
+   347→          </div>
+   348→
+   349→          <div className="glass-card glass-card-hover rounded-2xl p-4 sm:p-5 animate-stagger stagger-2">
+   350→            <div className="flex items-start justify-between mb-3">
+   351→              <div className="w-9 h-9 rounded-xl bg-[#10B981]/10 flex items-center justify-center">
+   352→                <CreditCard className="w-4 h-4 text-[#10B981]" />
+   353→              </div>
+   354→            </div>
+   355→            <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
+   356→              Transactions
+   357→            </p>
+   358→            <p className="text-xl sm:text-2xl font-black text-white animate-count">
+   359→              {formatNumber(totalTransactions)}
+   360→            </p>
+   361→            <p className="text-[11px] text-zinc-500 mt-1">
+   362→              {successFailureRate?.succeeded ?? 0} succeeded
+   363→            </p>
+   364→          </div>
+   365→
+   366→          <div className="glass-card glass-card-hover rounded-2xl p-4 sm:p-5 animate-stagger stagger-3">
+   367→            <div className="flex items-start justify-between mb-3">
+   368→              <div className="w-9 h-9 rounded-xl bg-green-500/10 flex items-center justify-center">
+   369→                <Target className="w-4 h-4 text-green-400" />
+   370→              </div>
+   371→            </div>
+   372→            <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
+   373→              Success Rate
+   374→            </p>
+   375→            <p className="text-xl sm:text-2xl font-black text-green-400 animate-count">
+   376→              {paymentSuccessRate.toFixed(1)}%
+   377→            </p>
+   378→            <p className="text-[11px] text-zinc-500 mt-1">invoice conversion</p>
+   379→          </div>
+   380→
+   381→          <div className="glass-card glass-card-hover rounded-2xl p-4 sm:p-5 animate-stagger stagger-4">
+   382→            <div className="flex items-start justify-between mb-3">
+   383→              <div className="w-9 h-9 rounded-xl bg-purple-500/10 flex items-center justify-center">
+   384→                <Users className="w-4 h-4 text-purple-400" />
+   385→              </div>
+   386→            </div>
+   387→            <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
+   388→              Avg Customer LTV
+   389→            </p>
+   390→            <p className="text-xl sm:text-2xl font-black text-white animate-count">
+   391→              {formatCurrency(avgLtv)}
+   392→            </p>
+   393→            <p className="text-[11px] text-zinc-500 mt-1">
+   394→              across {topCustomers.length} top customers
+   395→            </p>
+   396→          </div>
+   397→        </div>
+   398→
+   399→        {/* AI Insights */}
+   400→        <div className="mb-6 animate-fadeIn">
+   401→          <div className="glass-card rounded-2xl p-5">
+   402→            <div className="flex items-center justify-between gap-2 mb-3">
+   403→              <div className="flex items-center gap-2">
+   404→                <div className="w-7 h-7 rounded-lg bg-[#10B981]/10 flex items-center justify-center">
+   405→                  <Zap className="w-3.5 h-3.5 text-[#10B981]" />
+   406→                </div>
+   407→                <h3 className="text-sm font-bold text-white">Smart Insights</h3>
+   408→                <span
+   409→                  title="Generated by ThubPay AI"
+   410→                  className="inline-flex items-center gap-1 text-[10px] font-bold text-[#10B981] bg-[#10B981]/10 px-1.5 py-0.5 rounded border border-[#10B981]/20 cursor-help"
+   411→                >
+   412→                  <Sparkles className="w-2.5 h-2.5" />
+   413→                  AI
+   414→                </span>
+   415→              </div>
+   416→              <button
+   417→                type="button"
+   418→                onClick={refreshAiInsights}
+   419→                disabled={aiLoading}
+   420→                title="Refresh insights"
+   421→                aria-label="Refresh insights"
+   422→                className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-[#1a1a1f] border border-[#252529] text-zinc-400 hover:text-[#10B981] hover:border-[#10B981]/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+   423→              >
+   424→                <RefreshCw
+   425→                  className={`w-3.5 h-3.5 ${aiLoading ? 'animate-spin' : ''}`}
+   426→                />
+   427→              </button>
+   428→            </div>
+   429→
+   430→            {aiLoading ? (
+   431→              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+   432→                {[0, 1, 2, 3].map((i) => (
+   433→                  <div
+   434→                    key={i}
+   435→                    className="flex items-start gap-2.5 p-3 rounded-xl border border-[#252529] bg-[#1a1a1f]/40 animate-pulse"
+   436→                  >
+   437→                    <div className="w-4 h-4 rounded bg-[#252529] flex-shrink-0 mt-0.5" />
+   438→                    <div className="flex-1 space-y-1.5">
+   439→                      <div className="h-2.5 rounded bg-[#252529] w-3/4" />
+   440→                      <div className="h-2.5 rounded bg-[#252529] w-1/2" />
+   441→                    </div>
+   442→                  </div>
+   443→                ))}
+   444→              </div>
+   445→            ) : aiError ? (
+   446→              <div className="flex items-start gap-2.5 p-3 rounded-xl border border-red-500/20 bg-red-500/10">
+   447→                <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+   448→                <div className="flex-1">
+   449→                  <p className="text-xs text-red-300 leading-relaxed mb-2">{aiError}</p>
+   450→                  <button
+   451→                    type="button"
+   452→                    onClick={refreshAiInsights}
+   453→                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-400 hover:text-red-300 transition-colors"
+   454→                  >
+   455→                    <RefreshCw className="w-3 h-3" />
+   456→                    Retry
+   457→                  </button>
+   458→                </div>
+   459→              </div>
+   460→            ) : aiInsights.length > 0 ? (
+   461→              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+   462→                {aiInsights.map((insight, i) => {
+   463→                  const cfg = SEVERITY_CONFIG[insight.severity] ?? SEVERITY_CONFIG.info;
+   464→                  const Icon = cfg.Icon;
+   465→                  return (
+   466→                    <div
+   467→                      key={i}
+   468→                      className={`flex items-start gap-2.5 p-3 rounded-xl border ${cfg.bg} animate-stagger stagger-${Math.min(i + 1, 6)}`}
+   469→                    >
+   470→                      <Icon className={`w-4 h-4 ${cfg.color} flex-shrink-0 mt-0.5`} />
+   471→                      <p className="text-xs text-zinc-300 leading-relaxed">{insight.text}</p>
+   472→                    </div>
+   473→                  );
+   474→                })}
+   475→              </div>
+   476→            ) : (
+   477→              <div className="flex items-start gap-2.5 p-3 rounded-xl border border-[#252529] bg-[#1a1a1f]/40">
+   478→                <Sparkles className="w-4 h-4 text-sky-400 flex-shrink-0 mt-0.5" />
+   479→                <p className="text-xs text-zinc-400 leading-relaxed">
+   480→                  No insights available for this period.
+   481→                </p>
+   482→              </div>
+   483→            )}
+   484→          </div>
+   485→        </div>
+   486→
+   487→        {/* Revenue Chart */}
+   488→        <div className="glass-card rounded-2xl p-5 mb-6 animate-fadeIn">
+   489→          <div className="flex items-center justify-between mb-5">
+   490→            <div className="flex items-center gap-2.5">
+   491→              <div className="w-8 h-8 rounded-lg bg-[#10B981]/10 flex items-center justify-center">
+   492→                <TrendingUp className="w-4 h-4 text-[#10B981]" />
+   493→              </div>
+   494→              <div>
+   495→                <h2 className="text-base font-bold text-white">Revenue Over Time</h2>
+   496→                <p className="text-[11px] text-zinc-500">Daily revenue trend</p>
+   497→              </div>
+   498→            </div>
+   499→            <a
+   500→              href="/api/dashboard/export?type=transactions"
+   501→              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1a1a1f] border border-[#252529] text-xs font-medium text-zinc-300 hover:text-[#10B981] hover:border-[#10B981]/30 transition-all"
+   502→            >
+   503→              <Download className="w-3.5 h-3.5" />
+   504→              Export
+   505→            </a>
+   506→          </div>
+   507→
+   508→          {revenueData.length > 0 ? (
+   509→            <ResponsiveContainer width="100%" height={300}>
+   510→              <AreaChart data={revenueData}>
+   511→                <defs>
+   512→                  <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
+   513→                    <stop offset="5%" stopColor="#10B981" stopOpacity={0.3} />
+   514→                    <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
+   515→                  </linearGradient>
+   516→                </defs>
+   517→                <CartesianGrid strokeDasharray="3 3" stroke="#252529" />
+   518→                <XAxis
+   519→                  dataKey="date"
+   520→                  tickFormatter={(value) => formatDate(value)}
+   521→                  stroke="#52525b"
+   522→                  tick={{ fontSize: 11 }}
+   523→                />
+   524→                <YAxis
+   525→                  tickFormatter={(value) => `$${value / 1000}K`}
+   526→                  stroke="#52525b"
+   527→                  tick={{ fontSize: 11 }}
+   528→                />
+   529→                <Tooltip
+   530→                  formatter={(value: any) => [formatCurrency(value as number), 'Revenue']}
+   531→                  contentStyle={{
+   532→                    backgroundColor: '#131316',
+   533→                    border: '1px solid #252529',
+   534→                    borderRadius: '12px',
+   535→                    color: '#fafafa',
+   536→                    fontSize: '12px',
+   537→                  }}
+   538→                  labelStyle={{ color: '#a1a1aa' }}
+   539→                />
+   540→                <Area
+   541→                  type="monotone"
+   542→                  dataKey="amount"
+   543→                  stroke="#10B981"
+   544→                  strokeWidth={2}
+   545→                  fill="url(#revenueGradient)"
+   546→                  name="Revenue"
+   547→                  dot={{ fill: '#10B981', r: 3 }}
+   548→                  activeDot={{ r: 5 }}
+   549→                />
+   550→              </AreaChart>
+   551→            </ResponsiveContainer>
+   552→          ) : (
+   553→            <div className="flex flex-col items-center justify-center h-[300px] text-center">
+   554→              <TrendingUp className="w-10 h-10 text-zinc-700 mb-2" />
+   555→              <p className="text-sm text-zinc-500">No revenue data for this period</p>
+   556→              <p className="text-xs text-zinc-600 mt-1">Revenue will appear here once payments are processed</p>
+   557→            </div>
+   558→          )}
+   559→        </div>
+   560→
+   561→        {/* Success/Failure Trend + Payment Success Pie */}
+   562→        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-6">
+   563→          {/* Success/Failure Trend */}
+   564→          <div className="glass-card rounded-2xl p-5 animate-fadeIn">
+   565→            <div className="flex items-center gap-2.5 mb-5">
+   566→              <div className="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center">
+   567→                <Activity className="w-4 h-4 text-green-400" />
+   568→              </div>
+   569→              <div>
+   570→                <h2 className="text-base font-bold text-white">Payment Success Rate</h2>
+   571→                <p className="text-[11px] text-zinc-500">
+   572→                  {successFailureRate?.succeeded ?? 0} succeeded / {successFailureRate?.failed ?? 0} failed
+   573→                </p>
+   574→              </div>
+   575→            </div>
+   576→
+   577→            {trendData.length > 0 ? (
+   578→              <ResponsiveContainer width="100%" height={250}>
+   579→                <BarChart data={trendData}>
+   580→                  <CartesianGrid strokeDasharray="3 3" stroke="#252529" />
+   581→                  <XAxis dataKey="date" stroke="#52525b" tick={{ fontSize: 11 }} />
+   582→                  <YAxis stroke="#52525b" tick={{ fontSize: 11 }} unit="%" />
+   583→                  <Tooltip
+   584→                    contentStyle={{
+   585→                      backgroundColor: '#131316',
+   586→                      border: '1px solid #252529',
+   587→                      borderRadius: '12px',
+   588→                      color: '#fafafa',
+   589→                      fontSize: '12px',
+   590→                    }}
+   591→                  />
+   592→                  <Legend wrapperStyle={{ fontSize: '11px', color: '#a1a1aa' }} />
+   593→                  <Bar dataKey="success" fill="#10B981" radius={[4, 4, 0, 0]} name="Success %" />
+   594→                  <Bar dataKey="failed" fill="#EF4444" radius={[4, 4, 0, 0]} name="Failed %" />
+   595→                </BarChart>
+   596→              </ResponsiveContainer>
+   597→            ) : (
+   598→              <div className="flex flex-col items-center justify-center h-[250px] text-center">
+   599→                <PieChart className="w-10 h-10 text-zinc-700 mb-2" />
+   600→                <p className="text-sm text-zinc-500">No trend data yet</p>
+   601→                <p className="text-xs text-zinc-600 mt-1">
+   602→                  {successFailureRate
+   603→                    ? `${successFailureRate.successRate}% success rate overall`
+   604→                    : 'Payment data will appear here'}
+   605→                </p>
+   606→              </div>
+   607→            )}
+   608→          </div>
+   609→
+   610→          {/* Invoice Status Pie */}
+   611→          <div className="glass-card rounded-2xl p-5 animate-fadeIn">
+   612→            <div className="flex items-center gap-2.5 mb-5">
+   613→              <div className="w-8 h-8 rounded-lg bg-[#10B981]/10 flex items-center justify-center">
+   614→                <PieChart className="w-4 h-4 text-[#10B981]" />
+   615→              </div>
+   616→              <div>
+   617→                <h2 className="text-base font-bold text-white">Invoice Status</h2>
+   618→                <p className="text-[11px] text-zinc-500">{allInvoices} total invoices</p>
+   619→              </div>
+   620→            </div>
+   621→
+   622→            {pieData.length > 0 ? (
+   623→              <ResponsiveContainer width="100%" height={250}>
+   624→                <RechartsPieChart>
+   625→                  <Pie
+   626→                    data={pieData}
+   627→                    dataKey="value"
+   628→                    nameKey="name"
+   629→                    cx="50%"
+   630→                    cy="50%"
+   631→                    innerRadius={70}
+   632→                    outerRadius={95}
+   633→                    label={({ name, value }) => `${name}: ${value}`}
+   634→                    labelLine={{ stroke: '#52525b' }}
+   635→                  >
+   636→                    {pieData.map((entry, index) => (
+   637→                      <Cell key={`cell-${index}`} fill={entry.fill} />
+   638→                    ))}
+   639→                  </Pie>
+   640→                  <Tooltip
+   641→                    contentStyle={{
+   642→                      backgroundColor: '#131316',
+   643→                      border: '1px solid #252529',
+   644→                      borderRadius: '12px',
+   645→                      color: '#fafafa',
+   646→                      fontSize: '12px',
+   647→                    }}
+   648→                  />
+   649→                  <Legend wrapperStyle={{ fontSize: '11px', color: '#a1a1aa' }} />
+   650→                </RechartsPieChart>
+   651→              </ResponsiveContainer>
+   652→            ) : (
+   653→              <div className="flex flex-col items-center justify-center h-[250px] text-center">
+   654→                <PieChart className="w-10 h-10 text-zinc-700 mb-2" />
+   655→                <p className="text-sm text-zinc-500">No invoice data yet</p>
+   656→              </div>
+   657→            )}
+   658→          </div>
+   659→        </div>
+   660→
+   661→        {/* Revenue by Gateway */}
+   662→        <div className="glass-card rounded-2xl p-5 mb-6 animate-fadeIn">
+   663→          <div className="flex items-center gap-2.5 mb-5">
+   664→            <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
+   665→              <BarChart3 className="w-4 h-4 text-blue-400" />
+   666→            </div>
+   667→            <div>
+   668→              <h2 className="text-base font-bold text-white">Revenue by Gateway</h2>
+   669→              <p className="text-[11px] text-zinc-500">
+   670→                {revenueByGateway.length} active {revenueByGateway.length === 1 ? 'gateway' : 'gateways'}
+   671→              </p>
+   672→            </div>
+   673→          </div>
+   674→
+   675→          {revenueByGateway.length > 0 ? (
+   676→            <ResponsiveContainer width="100%" height={280}>
+   677→              <BarChart data={revenueByGateway} layout="vertical">
+   678→                <CartesianGrid strokeDasharray="3 3" stroke="#252529" horizontal={false} />
+   679→                <XAxis
+   680→                  type="number"
+   681→                  tickFormatter={(value) => `$${value / 1000}K`}
+   682→                  stroke="#52525b"
+   683→                  tick={{ fontSize: 11 }}
+   684→                />
+   685→                <YAxis
+   686→                  type="category"
+   687→                  dataKey="gateway"
+   688→                  stroke="#52525b"
+   689→                  tick={{ fontSize: 11 }}
+   690→                  width={100}
+   691→                />
+   692→                <Tooltip
+   693→                  formatter={(value: any) => [formatCurrency(value as number), 'Revenue']}
+   694→                  contentStyle={{
+   695→                    backgroundColor: '#131316',
+   696→                    border: '1px solid #252529',
+   697→                    borderRadius: '12px',
+   698→                    color: '#fafafa',
+   699→                    fontSize: '12px',
+   700→                  }}
+   701→                />
+   702→                <Bar dataKey="amount" radius={[0, 8, 8, 0]} name="Revenue">
+   703→                  {revenueByGateway.map((entry, index) => (
+   704→                    <Cell key={`cell-${index}`} fill={GATEWAY_COLORS[entry.gateway] || COLORS[index % COLORS.length]} />
+   705→                  ))}
+   706→                </Bar>
+   707→              </BarChart>
+   708→            </ResponsiveContainer>
+   709→          ) : (
+   710→            <div className="flex flex-col items-center justify-center h-[280px] text-center">
+   711→              <BarChart3 className="w-10 h-10 text-zinc-700 mb-2" />
+   712→              <p className="text-sm text-zinc-500">No gateway revenue data</p>
+   713→              <p className="text-xs text-zinc-600 mt-1">Connect a gateway to see revenue breakdown</p>
+   714→            </div>
+   715→          )}
+   716→        </div>
+   717→
+   718→        {/* Top Customers */}
+   719→        <div className="glass-card rounded-2xl p-5 mb-6 animate-fadeIn">
+   720→          <div className="flex items-center justify-between mb-5">
+   721→            <div className="flex items-center gap-2.5">
+   722→              <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center">
+   723→                <Users className="w-4 h-4 text-purple-400" />
+   724→              </div>
+   725→              <div>
+   726→                <h2 className="text-base font-bold text-white">Top Customers</h2>
+   727→                <p className="text-[11px] text-zinc-500">By lifetime spend</p>
+   728→              </div>
+   729→            </div>
+   730→            <a
+   731→              href="/dashboard/customers"
+   732→              className="flex items-center gap-1 text-xs text-[#10B981] hover:text-[#34D399] transition-colors group"
+   733→            >
+   734→              View All
+   735→              <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+   736→            </a>
+   737→          </div>
+   738→
+   739→          {topCustomers.length > 0 ? (
+   740→            <div className="space-y-2">
+   741→              {topCustomers.map((customer, index) => {
+   742→                const gradient = getAvatarGradient(customer.name || customer.email || index.toString());
+   743→                const initials = (customer.name || customer.email || 'U')
+   744→                  .split(' ')
+   745→                  .map((n) => n[0])
+   746→                  .slice(0, 2)
+   747→                  .join('')
+   748→                  .toUpperCase();
+   749→                const maxSpend = topCustomers[0]?.total_spend_cents || 1;
+   750→                const spendPct = Math.round((customer.total_spend_cents / maxSpend) * 100);
+   751→
+   752→                return (
+   753→                  <div
+   754→                    key={index}
+   755→                    className={`flex items-center gap-3 p-3 rounded-xl hover:bg-white/[0.03] transition-colors animate-stagger stagger-${Math.min(index + 1, 5)}`}
+   756→                  >
+   757→                    <span className="text-[10px] font-bold text-zinc-600 w-5 text-center">
+   758→                      #{index + 1}
+   759→                    </span>
+   760→                    <div
+   761→                      className={`flex-shrink-0 w-9 h-9 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center font-bold text-xs`}
+   762→                    >
+   763→                      {initials}
+   764→                    </div>
+   765→                    <div className="flex-1 min-w-0">
+   766→                      <p className="text-sm font-semibold text-white truncate">{customer.name}</p>
+   767→                      <p className="text-[11px] text-zinc-500 truncate">{customer.email}</p>
+   768→                    </div>
+   769→                    <div className="flex-shrink-0 w-24">
+   770→                      <div className="h-1.5 rounded-full bg-[#1a1a1f] overflow-hidden">
+   771→                        <div
+   772→                          className="h-full rounded-full bg-gradient-to-r from-[#10B981]/60 to-[#34D399]"
+   773→                          style={{ width: `${Math.max(spendPct, 3)}%` }}
+   774→                        />
+   775→                      </div>
+   776→                    </div>
+   777→                    <div className="flex-shrink-0 text-right w-20">
+   778→                      <p className="text-sm font-bold text-white">
+   779→                        {formatCurrency(customer.total_spend_cents)}
+   780→                      </p>
+   781→                      <p className="text-[10px] text-zinc-500">{customer.transaction_count} txns</p>
+   782→                    </div>
+   783→                  </div>
+   784→                );
+   785→              })}
+   786→            </div>
+   787→          ) : (
+   788→            <div className="flex flex-col items-center justify-center py-12 text-center">
+   789→              <Users className="w-10 h-10 text-zinc-700 mb-2" />
+   790→              <p className="text-sm text-zinc-500">No customer data yet</p>
+   791→              <p className="text-xs text-zinc-600 mt-1">Top customers will appear here</p>
+   792→            </div>
+   793→          )}
+   794→        </div>
+   795→
+   796→        {/* Invoice Status Breakdown */}
+   797→        <div className="glass-card rounded-2xl p-5 animate-fadeIn">
+   798→          <div className="flex items-center gap-2.5 mb-5">
+   799→            <div className="w-8 h-8 rounded-lg bg-[#10B981]/10 flex items-center justify-center">
+   800→              <FileText className="w-4 h-4 text-[#10B981]" />
+   801→            </div>
+   802→            <div>
+   803→              <h2 className="text-base font-bold text-white">Invoice Status Breakdown</h2>
+   804→              <p className="text-[11px] text-zinc-500">{allInvoices} total invoices</p>
+   805→            </div>
+   806→          </div>
+   807→
+   808→          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+   809→            {invoiceStats.map((stat) => {
+   810→              const colorMap: Record<string, { bg: string; text: string; border: string }> = {
+   811→                draft: { bg: 'bg-zinc-500/10', text: 'text-zinc-400', border: 'border-zinc-500/25' },
+   812→                sent: { bg: 'bg-blue-500/10', text: 'text-blue-300', border: 'border-blue-500/25' },
+   813→                viewed: { bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/25' },
+   814→                paid: { bg: 'bg-green-500/10', text: 'text-green-400', border: 'border-green-500/25' },
+   815→                overdue: { bg: 'bg-red-500/10', text: 'text-red-400', border: 'border-red-500/25' },
+   816→                void: { bg: 'bg-zinc-800', text: 'text-zinc-400', border: 'border-[#252529]' },
+   817→              };
+   818→              const cfg = colorMap[stat.status] || colorMap.draft;
+   819→              return (
+   820→                <div
+   821→                  key={stat.status}
+   822→                  className={`p-4 rounded-xl border text-center ${cfg.bg} ${cfg.border} transition-all hover:scale-105`}
+   823→                >
+   824→                  <p className={`text-2xl font-black ${cfg.text}`}>{stat.count}</p>
+   825→                  <p className={`text-[10px] font-bold uppercase tracking-widest mt-1 ${cfg.text}`}>
+   826→                    {stat.status}
+   827→                  </p>
+   828→                  <p className="text-[11px] text-zinc-500 mt-1">{formatCurrency(stat.total_cents)}</p>
+   829→                </div>
+   830→              );
+   831→            })}
+   832→            {invoiceStats.length === 0 && (
+   833→              <div className="col-span-full py-8 text-center text-zinc-500 text-sm">
+   834→                No invoices found for this workspace.
+   835→              </div>
+   836→            )}
+   837→          </div>
+   838→        </div>
+   839→      </div>
+   840→    </section>
+   841→  );
+   842→}
+   843→

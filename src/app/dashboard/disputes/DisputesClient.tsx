@@ -81,7 +81,7 @@ function timeAgo(iso: string): string {
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; border: string; icon: any }> = {
   needs_response: { label: 'Needs Response', bg: 'bg-amber-500/15', text: 'text-amber-400', border: 'border-amber-500/25', icon: AlertTriangle },
-  under_review: { label: 'Under Review', bg: 'bg-blue-500/15', text: 'text-blue-300', border: 'border-blue-500/25', icon: Clock },
+  under_review: { label: 'Under Review', bg: 'bg-cyan-500/15', text: 'text-cyan-300', border: 'border-cyan-500/25', icon: Clock },
   won: { label: 'Won', bg: 'bg-green-500/15', text: 'text-green-400', border: 'border-green-500/25', icon: CheckCircle2 },
   lost: { label: 'Lost', bg: 'bg-red-500/15', text: 'text-red-400', border: 'border-red-500/25', icon: XCircle },
   chargeback: { label: 'Chargeback', bg: 'bg-red-500/15', text: 'text-red-400', border: 'border-red-500/25', icon: XCircle },
@@ -216,8 +216,8 @@ export default function DisputesClient({ workspaceId }: Props) {
 
           <div className="glass-card glass-card-hover rounded-2xl p-4 sm:p-5 animate-stagger stagger-4">
             <div className="flex items-start justify-between mb-3">
-              <div className="w-9 h-9 rounded-xl bg-blue-500/10 flex items-center justify-center">
-                <DollarSign className="w-4 h-4 text-blue-400" />
+              <div className="w-9 h-9 rounded-xl bg-cyan-500/10 flex items-center justify-center">
+                <DollarSign className="w-4 h-4 text-cyan-400" />
               </div>
             </div>
             <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">

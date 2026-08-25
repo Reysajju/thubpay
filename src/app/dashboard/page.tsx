@@ -13,7 +13,7 @@ import DashboardOverviewCharts from './components/DashboardOverviewCharts';
 import ManualPaidButton from './components/ManualPaidButton';
 import MonthlyTargetWidget from './components/MonthlyTargetWidget';
 import RecentActivityTimeline from './components/RecentActivityTimeline';
-import { DollarSign, Clock, CheckCircle2, Users, TrendingUp, ArrowUpRight, FileText, Eye, MailCheck, Inbox, Plus } from 'lucide-react';
+import { DollarSign, Clock, CheckCircle2, Users, TrendingUp, ArrowUpRight, FileText, Eye, MailCheck, Inbox, Plus, Calendar, CalendarDays, CalendarRange, Receipt } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,7 +50,7 @@ function formatRelative(date: string | Date | null): string | null {
 
 const STATUS_STYLES: Record<string, string> = {
   paid: 'bg-green-500/15 text-green-400 border-green-500/25',
-  sent: 'bg-blue-500/15 text-blue-300 border-blue-500/25',
+  sent: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/25',
   viewed: 'bg-purple-500/15 text-purple-400 border-purple-500/25',
   overdue: 'bg-red-500/15 text-red-400 border-red-500/25',
   draft: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/25',
@@ -161,6 +161,65 @@ export default async function DashboardPage() {
             </p>
           </div>
           <DashboardActions workspaceId={workspaceId} clients={clientOptions} />
+        </div>
+
+        {/* Quick-Stats Strip — Today / MTD / YTD breakdown */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 mb-6 animate-fadeIn">
+          {[
+            {
+              label: "Today's Revenue",
+              value: toUsd(stats.todayRevenue),
+              caption: `${stats.todayTransactionCount} ${stats.todayTransactionCount === 1 ? 'payment' : 'payments'}`,
+              Icon: Calendar,
+              accent: 'from-emerald-500/15 to-emerald-500/5 border-emerald-500/20 text-emerald-300',
+              iconBg: 'bg-emerald-500/10 text-emerald-400',
+            },
+            {
+              label: 'MTD Revenue',
+              value: toUsd(stats.mrr),
+              caption: `${stats.paidCount} paid invoices`,
+              Icon: CalendarDays,
+              accent: 'from-cyan-500/15 to-cyan-500/5 border-cyan-500/20 text-cyan-300',
+              iconBg: 'bg-cyan-500/10 text-cyan-400',
+            },
+            {
+              label: 'YTD Revenue',
+              value: toUsd(stats.ytdRevenue),
+              caption: `${new Date().getFullYear()} year-to-date`,
+              Icon: CalendarRange,
+              accent: 'from-amber-500/15 to-amber-500/5 border-amber-500/20 text-amber-300',
+              iconBg: 'bg-amber-500/10 text-amber-400',
+            },
+            {
+              label: 'Avg per Invoice',
+              value: toUsd(stats.paidCount > 0 ? stats.totalRevenue / stats.paidCount : 0),
+              caption: `${stats.paidCount} paid · ${stats.totalCount - stats.paidCount} pending`,
+              Icon: Receipt,
+              accent: 'from-purple-500/15 to-purple-500/5 border-purple-500/20 text-purple-300',
+              iconBg: 'bg-purple-500/10 text-purple-400',
+            },
+          ].map((chip, i) => {
+            const Icon = chip.Icon;
+            return (
+              <div
+                key={chip.label}
+                className={`relative overflow-hidden rounded-2xl p-3.5 border bg-gradient-to-br ${chip.accent} animate-stagger stagger-${i + 1} stat-card-hover`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                    {chip.label}
+                  </span>
+                  <div className={`flex items-center justify-center w-6 h-6 rounded-lg ${chip.iconBg}`}>
+                    <Icon className="w-3 h-3" />
+                  </div>
+                </div>
+                <p className="text-lg sm:text-xl font-black tabular-nums animate-count">
+                  {chip.value}
+                </p>
+                <p className="text-[10px] text-zinc-500 mt-0.5 truncate">{chip.caption}</p>
+              </div>
+            );
+          })}
         </div>
 
         {/* Stats Grid */}

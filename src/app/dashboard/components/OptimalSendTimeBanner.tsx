@@ -80,13 +80,13 @@ export default function OptimalSendTimeBanner({
   // Collecting data state — need at least 10 views for a meaningful recommendation
   if (totalViews < 10) {
     return (
-      <div className="glass-card rounded-3xl p-4 sm:p-5 mb-6 animate-fadeIn border border-blue-500/20 bg-blue-500/[0.02]">
+      <div className="glass-card rounded-3xl p-4 sm:p-5 mb-6 animate-fadeIn border border-cyan-500/20 bg-cyan-500/[0.02]">
         <div className="flex items-start gap-3">
-          <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-blue-500/15 flex items-center justify-center">
-            <Sparkles className="w-4 h-4 text-blue-400" />
+          <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-cyan-500/15 flex items-center justify-center">
+            <Sparkles className="w-4 h-4 text-cyan-400" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-blue-300">
+            <p className="text-sm font-bold text-cyan-300">
               Collecting data for send-time optimization
             </p>
             <p className="text-xs text-zinc-400 mt-1">
@@ -96,11 +96,11 @@ export default function OptimalSendTimeBanner({
             <div className="mt-2 flex items-center gap-2">
               <div className="flex-1 max-w-[200px] h-1.5 rounded-full bg-[#1a1a1f] overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-blue-500 to-blue-400 transition-all"
+                  className="h-full bg-gradient-to-r from-cyan-500 to-cyan-400 transition-all"
                   style={{ width: `${Math.min(100, (totalViews / 10) * 100)}%` }}
                 />
               </div>
-              <span className="text-[10px] font-bold text-blue-400 tabular-nums">
+              <span className="text-[10px] font-bold text-cyan-400 tabular-nums">
                 {totalViews}/10
               </span>
             </div>

@@ -26,7 +26,7 @@ interface Props {
 // Distinct colors for each endpoint overlay (cycling palette)
 const COLORS = [
   { name: 'emerald', bar: 'bg-emerald-400', text: 'text-emerald-400', dot: 'bg-emerald-400' },
-  { name: 'blue', bar: 'bg-blue-400', text: 'text-blue-400', dot: 'bg-blue-400' },
+  { name: 'cyan', bar: 'bg-cyan-400', text: 'text-cyan-400', dot: 'bg-cyan-400' },
   { name: 'purple', bar: 'bg-purple-400', text: 'text-purple-400', dot: 'bg-purple-400' },
   { name: 'amber', bar: 'bg-amber-400', text: 'text-amber-400', dot: 'bg-amber-400' },
   { name: 'pink', bar: 'bg-pink-400', text: 'text-pink-400', dot: 'bg-pink-400' },
@@ -103,7 +103,7 @@ export default function EndpointComparisonChart({ endpoints }: Props) {
       {/* Header */}
       <div className="flex items-start justify-between mb-4 gap-3">
         <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500/15 to-blue-500/15 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500/15 to-cyan-500/15 flex items-center justify-center">
             <GitCompare className="w-5 h-5 text-purple-300" />
           </div>
           <div>

@@ -24,7 +24,7 @@ const TYPE_ICONS: Record<string, string> = {
 
 const TYPE_COLORS: Record<string, string> = {
   payment: 'border-green-500/30 bg-green-500/5',
-  info: 'border-blue-500/30 bg-blue-500/5',
+  info: 'border-cyan-500/30 bg-cyan-500/5',
   success: 'border-green-500/30 bg-green-500/5',
   warning: 'border-amber-500/30 bg-amber-500/5',
   error: 'border-red-500/30 bg-red-500/5',

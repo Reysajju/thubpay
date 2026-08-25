@@ -71,7 +71,7 @@ const TYPE_CONFIG: Record<
 > = {
   payment: { label: 'Payment', bg: 'bg-green-500/15', text: 'text-green-400', icon: ArrowUpRight },
   fee: { label: 'Fee', bg: 'bg-amber-500/15', text: 'text-amber-400', icon: ArrowDownRight },
-  payout: { label: 'Payout', bg: 'bg-blue-500/15', text: 'text-blue-300', icon: ArrowDownRight },
+  payout: { label: 'Payout', bg: 'bg-cyan-500/15', text: 'text-cyan-300', icon: ArrowDownRight },
   refund: { label: 'Refund', bg: 'bg-red-500/15', text: 'text-red-400', icon: ArrowDownRight },
 };
 
@@ -223,14 +223,14 @@ export default function FinanceClient({ workspaceId }: Props) {
 
           <div className="glass-card glass-card-hover rounded-2xl p-4 sm:p-5 animate-stagger stagger-3">
             <div className="flex items-start justify-between mb-3">
-              <div className="w-9 h-9 rounded-xl bg-blue-500/10 flex items-center justify-center">
-                <CreditCard className="w-4 h-4 text-blue-400" />
+              <div className="w-9 h-9 rounded-xl bg-cyan-500/10 flex items-center justify-center">
+                <CreditCard className="w-4 h-4 text-cyan-400" />
               </div>
             </div>
             <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
               Outstanding
             </p>
-            <p className="text-xl sm:text-2xl font-black text-blue-400 animate-count">
+            <p className="text-xl sm:text-2xl font-black text-cyan-400 animate-count">
               {toUsd(finance.outstanding)}
             </p>
             <p className="text-[11px] text-zinc-500 mt-1">Pending invoices</p>
@@ -500,8 +500,8 @@ export default function FinanceClient({ workspaceId }: Props) {
         <div className="glass-card rounded-2xl p-5 animate-fadeIn">
           <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                <Wallet className="w-4 h-4 text-blue-400" />
+              <div className="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center">
+                <Wallet className="w-4 h-4 text-cyan-400" />
               </div>
               <div>
                 <h2 className="text-sm font-bold text-white">Recent Payouts</h2>

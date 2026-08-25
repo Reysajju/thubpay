@@ -76,7 +76,7 @@ const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; b
   past_due: { label: 'Past Due', bg: 'bg-red-500/15', text: 'text-red-400', border: 'border-red-500/25', icon: XCircle },
   canceled: { label: 'Canceled', bg: 'bg-zinc-500/15', text: 'text-zinc-400', border: 'border-zinc-500/25', icon: XCircle },
   paused: { label: 'Paused', bg: 'bg-amber-500/15', text: 'text-amber-400', border: 'border-amber-500/25', icon: PauseCircle },
-  trialing: { label: 'Trialing', bg: 'bg-blue-500/15', text: 'text-blue-300', border: 'border-blue-500/25', icon: Clock },
+  trialing: { label: 'Trialing', bg: 'bg-cyan-500/15', text: 'text-cyan-300', border: 'border-cyan-500/25', icon: Clock },
 };
 
 const GATEWAY_ICONS: Record<string, string> = {
@@ -316,8 +316,8 @@ export default function SubscriptionsClient({ workspaceId }: Props) {
 
           <div className="glass-card glass-card-hover rounded-2xl p-4 sm:p-5 animate-stagger stagger-4">
             <div className="flex items-start justify-between mb-3">
-              <div className="w-9 h-9 rounded-xl bg-blue-500/10 flex items-center justify-center">
-                <Users className="w-4 h-4 text-blue-300" />
+              <div className="w-9 h-9 rounded-xl bg-cyan-500/10 flex items-center justify-center">
+                <Users className="w-4 h-4 text-cyan-300" />
               </div>
             </div>
             <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
