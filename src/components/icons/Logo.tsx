@@ -25,13 +25,13 @@ export default function Logo({
         >
           <defs>
             <linearGradient id="logo-shield-g" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="#00F5A0" />
-              <stop offset="50%" stop-color="#00D9F5" />
-              <stop offset="100%" stop-color="#059669" />
+              <stop offset="0%" stopColor="#00F5A0" />
+              <stop offset="50%" stopColor="#00D9F5" />
+              <stop offset="100%" stopColor="#059669" />
             </linearGradient>
             <linearGradient id="logo-shield-fill" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="#00F5A0" stop-opacity="0.25" />
-              <stop offset="100%" stop-color="#002419" stop-opacity="0.1" />
+              <stop offset="0%" stopColor="#00F5A0" stopOpacity="0.25" />
+              <stop offset="100%" stopColor="#002419" stopOpacity="0.1" />
             </linearGradient>
           </defs>
           <path

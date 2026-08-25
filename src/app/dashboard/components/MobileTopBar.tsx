@@ -21,7 +21,7 @@ import {
   Bell,
 } from 'lucide-react';
 import Logo from '@/components/icons/Logo';
-import { NotificationsBell, CommandPalette, SearchTrigger } from './NotificationsBell';
+import { NotificationsBell, SearchTrigger } from './NotificationsBell';
 
 const NAV_ITEMS = [
   { name: 'Overview', href: '/dashboard', icon: LayoutDashboard },
@@ -137,8 +137,6 @@ export default function MobileTopBar() {
           </div>
         </div>
       )}
-
-      <CommandPalette />
     </>
   );
 }

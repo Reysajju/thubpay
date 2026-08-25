@@ -981,6 +981,8 @@ export async function getDashboardStats(workspaceId: string) {
       totalRevenue: 0, pendingAmount: 0, overdueAmount: 0,
       paidCount: 0, totalCount: 0, successRate: 0,
       mrr: 0, clientCount: 0, activeGateways: 0,
+      revenueChangePct: 0, revenueChangeAbs: 0,
+      newClientsThisMonth: 0,
     };
   }
   try {
@@ -1007,16 +1009,40 @@ export async function getDashboardStats(workspaceId: string) {
     const successRate =
       totalCount > 0 ? Math.round((paidCount / totalCount) * 100) : 0;
 
-    const thisMonth = new Date();
-    thisMonth.setDate(1);
-    thisMonth.setHours(0, 0, 0, 0);
-    const mrr = invoices
-      .filter((i) => i.status === 'paid' && i.createdAt >= thisMonth)
+    // Month boundaries for trend calculations
+    const now = new Date();
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthEnd = thisMonthStart; // exclusive upper bound
+
+    const thisMonthRevenue = invoices
+      .filter((i) => i.status === 'paid' && i.createdAt >= thisMonthStart)
+      .reduce((s, i) => s + i.totalCents, 0);
+    const lastMonthRevenue = invoices
+      .filter(
+        (i) =>
+          i.status === 'paid' &&
+          i.createdAt >= lastMonthStart &&
+          i.createdAt < lastMonthEnd,
+      )
       .reduce((s, i) => s + i.totalCents, 0);
 
-    const [clientCount, activeGateways] = await Promise.all([
+    const revenueChangeAbs = thisMonthRevenue - lastMonthRevenue;
+    const revenueChangePct =
+      lastMonthRevenue > 0
+        ? Math.round((revenueChangeAbs / lastMonthRevenue) * 1000) / 10
+        : thisMonthRevenue > 0
+          ? 100
+          : 0;
+
+    const mrr = thisMonthRevenue;
+
+    const [clientCount, activeGateways, newClientsThisMonth] = await Promise.all([
       db.client.count({ where: { workspaceId } }),
       db.gatewayCredential.count({ where: { workspaceId, isActive: true } }),
+      db.client.count({
+        where: { workspaceId, createdAt: { gte: thisMonthStart } },
+      }),
     ]);
 
     return {
@@ -1029,12 +1055,17 @@ export async function getDashboardStats(workspaceId: string) {
       mrr,
       clientCount,
       activeGateways,
+      revenueChangePct,
+      revenueChangeAbs,
+      newClientsThisMonth,
     };
   } catch {
     return {
       totalRevenue: 0, pendingAmount: 0, overdueAmount: 0,
       paidCount: 0, totalCount: 0, successRate: 0,
       mrr: 0, clientCount: 0, activeGateways: 0,
+      revenueChangePct: 0, revenueChangeAbs: 0,
+      newClientsThisMonth: 0,
     };
   }
 }

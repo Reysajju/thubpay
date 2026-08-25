@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   TrendingUp,
   TrendingDown,
@@ -21,6 +21,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock,
+  RefreshCw,
 } from 'lucide-react';
 import {
   LineChart,
@@ -81,6 +82,45 @@ interface Props {
   workspaceId: string;
 }
 
+type AiInsightSeverity = 'positive' | 'warning' | 'critical' | 'info';
+
+interface AiInsight {
+  text: string;
+  severity: AiInsightSeverity;
+}
+
+interface AiInsightsResponse {
+  insights: AiInsight[];
+  generatedAt: string;
+  cached: boolean;
+}
+
+const SEVERITY_CONFIG: Record<
+  AiInsightSeverity,
+  { Icon: typeof Sparkles; color: string; bg: string }
+> = {
+  positive: {
+    Icon: CheckCircle2,
+    color: 'text-emerald-400',
+    bg: 'bg-emerald-500/10 border-emerald-500/20',
+  },
+  warning: {
+    Icon: AlertCircle,
+    color: 'text-amber-400',
+    bg: 'bg-amber-500/10 border-amber-500/20',
+  },
+  critical: {
+    Icon: AlertCircle,
+    color: 'text-red-400',
+    bg: 'bg-red-500/10 border-red-500/20',
+  },
+  info: {
+    Icon: Sparkles,
+    color: 'text-sky-400',
+    bg: 'bg-sky-400/10 border-sky-400/20',
+  },
+};
+
 const COLORS = ['#10B981', '#0A6C7B', '#10B981', '#F59E0B', '#EF4444', '#a78bfa', '#22d3ee'];
 
 const GATEWAY_COLORS: Record<string, string> = {
@@ -136,9 +176,43 @@ export default function AnalyticsChartsClient({ invoiceStats, workspaceId }: Pro
   const [successFailureRate, setSuccessFailureRate] = useState<SuccessFailureRate | null>(null);
   const [topCustomers, setTopCustomers] = useState<CustomerSpend[]>([]);
 
+  // ── AI-powered Smart Insights state ──────────────────────────
+  const [aiInsights, setAiInsights] = useState<AiInsight[]>([]);
+  const [aiLoading, setAiLoading] = useState(true);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  const fetchAiInsights = useCallback(async () => {
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const res = await fetch(
+        `/api/dashboard/analytics/ai-insights?range=${timeRange}`,
+        { cache: 'no-store' }
+      );
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = (await res.json()) as AiInsightsResponse;
+      setAiInsights(data.insights || []);
+    } catch (err) {
+      console.error('Failed to fetch AI insights:', err);
+      setAiError('Unable to load AI insights. Please try again.');
+      // Render the default fallback insight locally so the page is never empty.
+      setAiInsights([
+        {
+          text: 'Analytics data is being processed. Check back shortly.',
+          severity: 'info',
+        },
+      ]);
+    } finally {
+      setAiLoading(false);
+    }
+  }, [timeRange]);
+
   useEffect(() => {
     fetchData();
-  }, [timeRange]);
+    fetchAiInsights();
+  }, [timeRange, fetchAiInsights]);
 
   const fetchData = async () => {
     try {
@@ -172,6 +246,10 @@ export default function AnalyticsChartsClient({ invoiceStats, workspaceId }: Pro
       setLoading(false);
     }
   };
+
+  const refreshAiInsights = useCallback(() => {
+    fetchAiInsights();
+  }, [fetchAiInsights]);
 
   if (loading) {
     return (
@@ -207,59 +285,6 @@ export default function AnalyticsChartsClient({ invoiceStats, workspaceId }: Pro
     { name: 'Overdue', value: invoiceStats.find((s) => s.status === 'overdue')?.count ?? 0, fill: '#EF4444' },
     { name: 'Void', value: invoiceStats.find((s) => s.status === 'void')?.count ?? 0, fill: '#71717a' },
   ].filter((d) => d.value > 0);
-
-  // Generate insights
-  const insights: { icon: any; text: string; color: string; bg: string }[] = [];
-  if (totalRevenue > 0) {
-    insights.push({
-      icon: TrendingUp,
-      text: `Total revenue of ${formatCurrency(totalRevenue)} collected this period across ${totalTransactions} transactions.`,
-      color: 'text-green-400',
-      bg: 'bg-green-500/10 border-green-500/20',
-    });
-  }
-  if (paymentSuccessRate >= 80) {
-    insights.push({
-      icon: CheckCircle2,
-      text: `Strong invoice conversion rate of ${paymentSuccessRate.toFixed(1)}% — ${paidInvoices?.count ?? 0} of ${allInvoices} invoices paid.`,
-      color: 'text-green-400',
-      bg: 'bg-green-500/10 border-green-500/20',
-    });
-  } else if (paymentSuccessRate > 0 && paymentSuccessRate < 60) {
-    insights.push({
-      icon: AlertCircle,
-      text: `Invoice conversion rate is ${paymentSuccessRate.toFixed(1)}% — consider following up on unpaid invoices.`,
-      color: 'text-amber-400',
-      bg: 'bg-amber-500/10 border-amber-500/20',
-    });
-  }
-  if (revenueByGateway.length > 0) {
-    const topGateway = revenueByGateway.reduce((a, b) => (a.amount > b.amount ? a : b));
-    insights.push({
-      icon: CreditCard,
-      text: `${topGateway.gateway} is your top gateway with ${formatCurrency(topGateway.amount)} in revenue.`,
-      color: 'text-[#10B981]',
-      bg: 'bg-[#10B981]/10 border-[#10B981]/20',
-    });
-  }
-  if (topCustomers.length > 0) {
-    const topCustomer = topCustomers[0];
-    insights.push({
-      icon: Users,
-      text: `${topCustomer.name} is your top customer with ${formatCurrency(topCustomer.total_spend_cents)} in lifetime spend.`,
-      color: 'text-purple-400',
-      bg: 'bg-purple-500/10 border-purple-500/20',
-    });
-  }
-  const overdueCount = invoiceStats.find((s) => s.status === 'overdue')?.count ?? 0;
-  if (overdueCount > 0) {
-    insights.push({
-      icon: AlertCircle,
-      text: `${overdueCount} invoice${overdueCount > 1 ? 's are' : ' is'} overdue — follow up to recover outstanding revenue.`,
-      color: 'text-red-400',
-      bg: 'bg-red-500/10 border-red-500/20',
-    });
-  }
 
   const trendData = successFailureRate?.trend || [];
 
@@ -372,35 +397,92 @@ export default function AnalyticsChartsClient({ invoiceStats, workspaceId }: Pro
         </div>
 
         {/* AI Insights */}
-        {insights.length > 0 && (
-          <div className="mb-6 animate-fadeIn">
-            <div className="glass-card rounded-2xl p-5">
-              <div className="flex items-center gap-2 mb-3">
+        <div className="mb-6 animate-fadeIn">
+          <div className="glass-card rounded-2xl p-5">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <div className="flex items-center gap-2">
                 <div className="w-7 h-7 rounded-lg bg-[#10B981]/10 flex items-center justify-center">
                   <Zap className="w-3.5 h-3.5 text-[#10B981]" />
                 </div>
                 <h3 className="text-sm font-bold text-white">Smart Insights</h3>
-                <span className="text-[10px] font-bold text-[#10B981] bg-[#10B981]/10 px-1.5 py-0.5 rounded">
+                <span
+                  title="Generated by ThubPay AI"
+                  className="inline-flex items-center gap-1 text-[10px] font-bold text-[#10B981] bg-[#10B981]/10 px-1.5 py-0.5 rounded border border-[#10B981]/20 cursor-help"
+                >
+                  <Sparkles className="w-2.5 h-2.5" />
                   AI
                 </span>
               </div>
+              <button
+                type="button"
+                onClick={refreshAiInsights}
+                disabled={aiLoading}
+                title="Refresh insights"
+                aria-label="Refresh insights"
+                className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-[#1a1a1f] border border-[#252529] text-zinc-400 hover:text-[#10B981] hover:border-[#10B981]/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <RefreshCw
+                  className={`w-3.5 h-3.5 ${aiLoading ? 'animate-spin' : ''}`}
+                />
+              </button>
+            </div>
+
+            {aiLoading ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {insights.map((insight, i) => {
-                  const Icon = insight.icon;
+                {[0, 1, 2, 3].map((i) => (
+                  <div
+                    key={i}
+                    className="flex items-start gap-2.5 p-3 rounded-xl border border-[#252529] bg-[#1a1a1f]/40 animate-pulse"
+                  >
+                    <div className="w-4 h-4 rounded bg-[#252529] flex-shrink-0 mt-0.5" />
+                    <div className="flex-1 space-y-1.5">
+                      <div className="h-2.5 rounded bg-[#252529] w-3/4" />
+                      <div className="h-2.5 rounded bg-[#252529] w-1/2" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : aiError ? (
+              <div className="flex items-start gap-2.5 p-3 rounded-xl border border-red-500/20 bg-red-500/10">
+                <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-xs text-red-300 leading-relaxed mb-2">{aiError}</p>
+                  <button
+                    type="button"
+                    onClick={refreshAiInsights}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-400 hover:text-red-300 transition-colors"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    Retry
+                  </button>
+                </div>
+              </div>
+            ) : aiInsights.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {aiInsights.map((insight, i) => {
+                  const cfg = SEVERITY_CONFIG[insight.severity] ?? SEVERITY_CONFIG.info;
+                  const Icon = cfg.Icon;
                   return (
                     <div
                       key={i}
-                      className={`flex items-start gap-2.5 p-3 rounded-xl border ${insight.bg} animate-stagger stagger-${Math.min(i + 1, 6)}`}
+                      className={`flex items-start gap-2.5 p-3 rounded-xl border ${cfg.bg} animate-stagger stagger-${Math.min(i + 1, 6)}`}
                     >
-                      <Icon className={`w-4 h-4 ${insight.color} flex-shrink-0 mt-0.5`} />
+                      <Icon className={`w-4 h-4 ${cfg.color} flex-shrink-0 mt-0.5`} />
                       <p className="text-xs text-zinc-300 leading-relaxed">{insight.text}</p>
                     </div>
                   );
                 })}
               </div>
-            </div>
+            ) : (
+              <div className="flex items-start gap-2.5 p-3 rounded-xl border border-[#252529] bg-[#1a1a1f]/40">
+                <Sparkles className="w-4 h-4 text-sky-400 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  No insights available for this period.
+                </p>
+              </div>
+            )}
           </div>
-        )}
+        </div>
 
         {/* Revenue Chart */}
         <div className="glass-card rounded-2xl p-5 mb-6 animate-fadeIn">

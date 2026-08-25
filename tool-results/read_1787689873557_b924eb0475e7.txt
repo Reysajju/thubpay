@@ -1,0 +1,1716 @@
+     1→import { db } from '@/lib/db';
+     2→
+     3→// ─── Data Access Layer ────────────────────────────────────────
+     4→// All dashboard data reads go through here. Backed by Prisma/SQLite.
+     5→// Replaces the previous in-memory demo store — data is now durable.
+     6→
+     7→export interface DemoInvoice {
+     8→  id: string;
+     9→  invoice_number: string | null;
+    10→  client_id: string | null;
+    11→  workspace_id: string;
+    12→  total_cents: number;
+    13→  status: 'draft' | 'sent' | 'viewed' | 'paid' | 'overdue' | 'void';
+    14→  currency: string;
+    15→  due_date: string | null;
+    16→  paid_via_gateway: string | null;
+    17→  custom_payment_gateway: string | null;
+    18→  created_at: string;
+    19→  updated_at: string;
+    20→  clients?: { name: string; email: string | null } | null;
+    21→  // ── Link tracking fields ──────────────────────────────
+    22→  tracking_token: string | null;
+    23→  sent_at: string | null;
+    24→  first_viewed_at: string | null;
+    25→  last_viewed_at: string | null;
+    26→  view_count: number;
+    27→  last_viewer_location: string | null;
+    28→  last_viewer_user_agent: string | null;
+    29→}
+    30→
+    31→export interface DemoClient {
+    32→  id: string;
+    33→  workspace_id: string;
+    34→  name: string;
+    35→  email: string | null;
+    36→  phone: string | null;
+    37→  company: string | null;
+    38→  total_spend_cents: number;
+    39→  transaction_count: number;
+    40→  created_at: string;
+    41→}
+    42→
+    43→export interface DemoGateway {
+    44→  id: string;
+    45→  gateway_slug: string;
+    46→  label: string;
+    47→  publishable_key: string | null;
+    48→  mode: 'test' | 'live';
+    49→  is_active: boolean;
+    50→  is_default: boolean;
+    51→  created_at: string;
+    52→}
+    53→
+    54→export interface DemoApiKey {
+    55→  id: string;
+    56→  tenant_id: string;
+    57→  name: string;
+    58→  key_prefix: string;
+    59→  key_masked: string;
+    60→  is_active: boolean;
+    61→  created_at: string;
+    62→  last_used_at: string | null;
+    63→}
+    64→
+    65→export interface DemoWebhookEvent {
+    66→  id: string;
+    67→  workspace_id: string;
+    68→  event_type: string;
+    69→  gateway: string | null;
+    70→  status: 'success' | 'failed' | 'pending';
+    71→  payload: Record<string, any>;
+    72→  created_at: string;
+    73→}
+    74→
+    75→// ─── Workspace helpers ────────────────────────────────────────
+    76→
+    77→export async function getWorkspaceById(id: string) {
+    78→  // Handle demo workspace fallback
+    79→  if (id === 'ws-demo-workspace') {
+    80→    return {
+    81→      id: 'ws-demo-workspace',
+    82→      name: 'ThubPay Demo Workspace',
+    83→      plan: 'pro',
+    84→      monthly_target_cents: 500000,
+    85→      owner_user_id: 'demo-admin-id',
+    86→      baseCurrency: 'USD',
+    87→      logoUrl: null,
+    88→      onboardingCompleted: true,
+    89→    };
+    90→  }
+    91→  try {
+    92→    const ws = await db.workspace.findUnique({ where: { id } });
+    93→    if (!ws) return null;
+    94→    return {
+    95→      id: ws.id,
+    96→      name: ws.name,
+    97→      plan: ws.plan,
+    98→      monthly_target_cents: ws.monthlyTargetCents,
+    99→      owner_user_id: ws.ownerUserId,
+   100→      baseCurrency: ws.baseCurrency,
+   101→      logoUrl: ws.logoUrl,
+   102→      onboardingCompleted: ws.onboardingCompleted,
+   103→    };
+   104→  } catch {
+   105→    return null;
+   106→  }
+   107→}
+   108→
+   109→export async function getWorkspaceForUser(userId: string) {
+   110→  try {
+   111→    const membership = await db.workspaceMember.findFirst({
+   112→      where: { userId },
+   113→      include: { workspace: true },
+   114→      orderBy: { createdAt: 'asc' },
+   115→    });
+   116→    if (!membership) return null;
+   117→    const ws = membership.workspace;
+   118→    return {
+   119→      id: ws.id,
+   120→      name: ws.name,
+   121→      plan: ws.plan,
+   122→      monthly_target_cents: ws.monthlyTargetCents,
+   123→      owner_user_id: ws.ownerUserId,
+   124→      baseCurrency: ws.baseCurrency,
+   125→      logoUrl: ws.logoUrl,
+   126→      onboardingCompleted: ws.onboardingCompleted,
+   127→    };
+   128→  } catch {
+   129→    return null;
+   130→  }
+   131→}
+   132→
+   133→// ─── Invoices ─────────────────────────────────────────────────
+   134→
+   135→function mapInvoice(r: Awaited<ReturnType<typeof db.invoice.findMany>>[number]): DemoInvoice {
+   136→  return {
+   137→    id: r.id,
+   138→    invoice_number: r.invoiceNumber,
+   139→    client_id: r.clientId,
+   140→    workspace_id: r.workspaceId,
+   141→    total_cents: r.totalCents,
+   142→    status: r.status as DemoInvoice['status'],
+   143→    currency: r.currency,
+   144→    due_date: r.dueDate ? r.dueDate.toISOString().slice(0, 10) : null,
+   145→    paid_via_gateway: r.paidViaGateway,
+   146→    custom_payment_gateway: r.customPaymentGateway,
+   147→    created_at: r.createdAt.toISOString(),
+   148→    updated_at: r.updatedAt.toISOString(),
+   149→    clients: r.client
+   150→      ? { name: r.client.name, email: r.client.email }
+   151→      : null,
+   152→    tracking_token: r.trackingToken,
+   153→    sent_at: r.sentAt ? r.sentAt.toISOString() : null,
+   154→    first_viewed_at: r.firstViewedAt ? r.firstViewedAt.toISOString() : null,
+   155→    last_viewed_at: r.lastViewedAt ? r.lastViewedAt.toISOString() : null,
+   156→    view_count: r.viewCount,
+   157→    last_viewer_location: r.lastViewerLocation,
+   158→    last_viewer_user_agent: r.lastViewerUserAgent,
+   159→  };
+   160→}
+   161→
+   162→export async function getInvoices(workspaceId: string): Promise<DemoInvoice[]> {
+   163→  // Return empty for demo workspace (no real rows)
+   164→  if (workspaceId === 'ws-demo-workspace') return [];
+   165→  try {
+   166→    const rows = await db.invoice.findMany({
+   167→      where: { workspaceId },
+   168→      include: { client: true },
+   169→      orderBy: { createdAt: 'desc' },
+   170→    });
+   171→    return rows.map(mapInvoice);
+   172→  } catch {
+   173→    return [];
+   174→  }
+   175→}
+   176→
+   177→export async function getInvoiceById(id: string) {
+   178→  return db.invoice.findUnique({
+   179→    where: { id },
+   180→    include: { client: true, workspace: true, transactions: true },
+   181→  });
+   182→}
+   183→
+   184→export async function getRecentInvoices(workspaceId: string, limit = 8) {
+   185→  if (workspaceId === 'ws-demo-workspace') return [];
+   186→  try {
+   187→    const rows = await db.invoice.findMany({
+   188→      where: { workspaceId },
+   189→      include: { client: true },
+   190→      orderBy: { createdAt: 'desc' },
+   191→      take: limit,
+   192→    });
+   193→    return rows.map(mapInvoice);
+   194→  } catch {
+   195→    return [];
+   196→  }
+   197→}
+   198→
+   199→// ── Link Tracking accessors ────────────────────────────────────
+   200→
+   201→export async function getInvoiceViewStats(workspaceId: string) {
+   202→  if (workspaceId === 'ws-demo-workspace') {
+   203→    return { sentCount: 0, viewedCount: 0, notViewedCount: 0, openRate: 0, recentOpens: [] };
+   204→  }
+   205→  try {
+   206→    const [sentCount, viewedCount, openedRows] = await Promise.all([
+   207→      db.invoice.count({ where: { workspaceId, status: { in: ['sent', 'viewed', 'paid', 'overdue'] } } }),
+   208→      db.invoice.count({ where: { workspaceId, firstViewedAt: { not: null } } }),
+   209→      db.invoice.findMany({
+   210→        where: { workspaceId, firstViewedAt: { not: null } },
+   211→        orderBy: { lastViewedAt: 'desc' },
+   212→        take: 10,
+   213→        include: { client: true },
+   214→      }),
+   215→    ]);
+   216→
+   217→    const recentOpens = openedRows.map((r) => ({
+   218→      id: r.id,
+   219→      invoice_number: r.invoiceNumber,
+   220→      client_name: r.client?.name ?? null,
+   221→      client_email: r.client?.email ?? null,
+   222→      first_viewed_at: r.firstViewedAt ? r.firstViewedAt.toISOString() : null,
+   223→      last_viewed_at: r.lastViewedAt ? r.lastViewedAt.toISOString() : null,
+   224→      view_count: r.viewCount,
+   225→      total_cents: r.totalCents,
+   226→      status: r.status,
+   227→      last_viewer_location: r.lastViewerLocation,
+   228→    }));
+   229→
+   230→    const openRate = sentCount > 0 ? Math.round((viewedCount / sentCount) * 100) : 0;
+   231→
+   232→    return {
+   233→      sentCount,
+   234→      viewedCount,
+   235→      notViewedCount: Math.max(0, sentCount - viewedCount),
+   236→      openRate,
+   237→      recentOpens,
+   238→    };
+   239→  } catch {
+   240→    return { sentCount: 0, viewedCount: 0, notViewedCount: 0, openRate: 0, recentOpens: [] };
+   241→  }
+   242→}
+   243→
+   244→export async function getInvoiceViews(invoiceId: string, limit = 50) {
+   245→  try {
+   246→    return db.invoiceView.findMany({
+   247→      where: { invoiceId },
+   248→      orderBy: { viewedAt: 'desc' },
+   249→      take: limit,
+   250→    });
+   251→  } catch {
+   252→    return [];
+   253→  }
+   254→}
+   255→
+   256→// ─── Clients ──────────────────────────────────────────────────
+   257→
+   258→export async function getClients(workspaceId: string): Promise<DemoClient[]> {
+   259→  if (workspaceId === 'ws-demo-workspace') return [];
+   260→  try {
+   261→    const rows = await db.client.findMany({
+   262→      where: { workspaceId },
+   263→      orderBy: { createdAt: 'desc' },
+   264→    });
+   265→    return rows.map((r) => ({
+   266→      id: r.id,
+   267→      workspace_id: r.workspaceId,
+   268→      name: r.name,
+   269→      email: r.email,
+   270→      phone: r.phone,
+   271→      company: r.company,
+   272→      total_spend_cents: r.totalSpendCents,
+   273→      transaction_count: r.transactionCount,
+   274→      created_at: r.createdAt.toISOString(),
+   275→    }));
+   276→  } catch {
+   277→    return [];
+   278→  }
+   279→}
+   280→
+   281→export async function getClientWithInvoices(clientId: string) {
+   282→  try {
+   283→    const client = await db.client.findUnique({
+   284→      where: { id: clientId },
+   285→      include: {
+   286→        invoices: {
+   287→          orderBy: { createdAt: 'desc' },
+   288→          take: 50,
+   289→        },
+   290→      },
+   291→    });
+   292→    if (!client) return null;
+   293→    return {
+   294→      id: client.id,
+   295→      workspace_id: client.workspaceId,
+   296→      name: client.name,
+   297→      email: client.email,
+   298→      phone: client.phone,
+   299→      company: client.company,
+   300→      total_spend_cents: client.totalSpendCents,
+   301→      transaction_count: client.transactionCount,
+   302→      created_at: client.createdAt.toISOString(),
+   303→      invoices: client.invoices.map((inv) => ({
+   304→        id: inv.id,
+   305→        invoice_number: inv.invoiceNumber,
+   306→        status: inv.status,
+   307→        total_cents: inv.totalCents,
+   308→        currency: inv.currency,
+   309→        due_date: inv.dueDate ? inv.dueDate.toISOString().slice(0, 10) : null,
+   310→        paid_via_gateway: inv.paidViaGateway,
+   311→        custom_payment_gateway: inv.customPaymentGateway,
+   312→        created_at: inv.createdAt.toISOString(),
+   313→      })),
+   314→    };
+   315→  } catch {
+   316→    return null;
+   317→  }
+   318→}
+   319→
+   320→// ─── Gateways ─────────────────────────────────────────────────
+   321→
+   322→export async function getGateways(workspaceId: string): Promise<DemoGateway[]> {
+   323→  const rows = await db.gatewayCredential.findMany({
+   324→    where: { workspaceId },
+   325→    orderBy: { createdAt: 'asc' },
+   326→  });
+   327→  return rows.map((r) => ({
+   328→    id: r.id,
+   329→    gateway_slug: r.gatewaySlug,
+   330→    label: r.label,
+   331→    publishable_key: r.publishableKey,
+   332→    mode: r.mode as 'test' | 'live',
+   333→    is_active: r.isActive,
+   334→    is_default: r.isDefault,
+   335→    created_at: r.createdAt.toISOString(),
+   336→  }));
+   337→}
+   338→
+   339→// ─── API Keys ─────────────────────────────────────────────────
+   340→
+   341→export async function getApiKeys(workspaceId: string): Promise<DemoApiKey[]> {
+   342→  const rows = await db.apiKey.findMany({
+   343→    where: { tenantId: workspaceId },
+   344→    orderBy: { createdAt: 'desc' },
+   345→  });
+   346→  return rows.map((r) => ({
+   347→    id: r.id,
+   348→    tenant_id: r.tenantId,
+   349→    name: r.name,
+   350→    key_prefix: r.keyPrefix,
+   351→    key_masked: r.keyMasked,
+   352→    is_active: r.isActive,
+   353→    created_at: r.createdAt.toISOString(),
+   354→    last_used_at: r.lastUsedAt ? r.lastUsedAt.toISOString() : null,
+   355→  }));
+   356→}
+   357→
+   358→// ─── Webhook Events ───────────────────────────────────────────
+   359→
+   360→export async function getWebhookEvents(
+   361→  workspaceId: string
+   362→): Promise<DemoWebhookEvent[]> {
+   363→  const rows = await db.webhookEvent.findMany({
+   364→    where: { workspaceId },
+   365→    orderBy: { createdAt: 'desc' },
+   366→    take: 50,
+   367→  });
+   368→  return rows.map((r) => ({
+   369→    id: r.id,
+   370→    workspace_id: r.workspaceId,
+   371→    event_type: r.eventType,
+   372→    gateway: r.gateway,
+   373→    status: r.status as DemoWebhookEvent['status'],
+   374→    payload: r.payload ? JSON.parse(r.payload) : {},
+   375→    created_at: r.createdAt.toISOString(),
+   376→  }));
+   377→}
+   378→
+   379→// ─── Transactions (payment attempts) ──────────────────────────
+   380→
+   381→export interface DemoTransaction {
+   382→  id: string;
+   383→  workspace_id: string;
+   384→  invoice_id: string | null;
+   385→  gateway_id: string | null;
+   386→  gateway_slug: string;
+   387→  gateway_label: string | null;
+   388→  external_id: string | null;
+   389→  amount_cents: number;
+   390→  currency: string;
+   391→  status: 'pending' | 'succeeded' | 'failed' | 'refunded' | 'disputed';
+   392→  failure_reason: string | null;
+   393→  customer_email: string | null;
+   394→  customer_name: string | null;
+   395→  invoice_number: string | null;
+   396→  created_at: string;
+   397→  updated_at: string;
+   398→}
+   399→
+   400→export async function getTransactions(
+   401→  workspaceId: string,
+   402→  options?: {
+   403→    status?: string;
+   404→    gatewaySlug?: string;
+   405→    limit?: number;
+   406→    startDate?: Date;
+   407→    endDate?: Date;
+   408→  }
+   409→): Promise<DemoTransaction[]> {
+   410→  const where: any = { workspaceId };
+   411→  if (options?.status && options.status !== 'all') {
+   412→    where.status = options.status;
+   413→  }
+   414→  if (options?.gatewaySlug && options.gatewaySlug !== 'all') {
+   415→    where.gatewaySlug = options.gatewaySlug;
+   416→  }
+   417→  if (options?.startDate || options?.endDate) {
+   418→    where.createdAt = {};
+   419→    if (options?.startDate) where.createdAt.gte = options.startDate;
+   420→    if (options?.endDate) where.createdAt.lte = options.endDate;
+   421→  }
+   422→
+   423→  const rows = await db.transaction.findMany({
+   424→    where,
+   425→    orderBy: { createdAt: 'desc' },
+   426→    take: options?.limit ?? 200,
+   427→    include: { gateway: true, invoice: true },
+   428→  });
+   429→
+   430→  return rows.map((t) => ({
+   431→    id: t.id,
+   432→    workspace_id: t.workspaceId,
+   433→    invoice_id: t.invoiceId,
+   434→    gateway_id: t.gatewayId,
+   435→    gateway_slug: t.gatewaySlug,
+   436→    gateway_label: t.gateway?.label || null,
+   437→    external_id: t.externalId,
+   438→    amount_cents: t.amountCents,
+   439→    currency: t.currency,
+   440→    status: t.status as DemoTransaction['status'],
+   441→    failure_reason: t.failureReason,
+   442→    customer_email: t.customerEmail,
+   443→    customer_name: t.customerName,
+   444→    invoice_number: t.invoice?.invoiceNumber || null,
+   445→    created_at: t.createdAt.toISOString(),
+   446→    updated_at: t.updatedAt.toISOString(),
+   447→  }));
+   448→}
+   449→
+   450→export async function getTransactionStats(workspaceId: string) {
+   451→  const transactions = await db.transaction.findMany({
+   452→    where: { workspaceId },
+   453→    select: {
+   454→      amountCents: true,
+   455→      status: true,
+   456→      gatewaySlug: true,
+   457→      createdAt: true,
+   458→    },
+   459→  });
+   460→
+   461→  const totalVolume = transactions
+   462→    .filter((t) => t.status === 'succeeded')
+   463→    .reduce((s, t) => s + t.amountCents, 0);
+   464→  const succeededCount = transactions.filter((t) => t.status === 'succeeded').length;
+   465→  const failedCount = transactions.filter((t) => t.status === 'failed').length;
+   466→  const pendingCount = transactions.filter((t) => t.status === 'pending').length;
+   467→  const refundedCount = transactions.filter((t) => t.status === 'refunded').length;
+   468→  const disputedCount = transactions.filter((t) => t.status === 'disputed').length;
+   469→  const totalCount = transactions.length;
+   470→  const successRate =
+   471→    totalCount > 0 ? Math.round((succeededCount / totalCount) * 100) : 0;
+   472→
+   473→  // Average transaction value (succeeded only)
+   474→  const avgAmount =
+   475→    succeededCount > 0
+   476→      ? Math.round(totalVolume / succeededCount)
+   477→      : 0;
+   478→
+   479→  // Group by gateway
+   480→  const byGateway: Record<string, { count: number; volume: number }> = {};
+   481→  for (const t of transactions) {
+   482→    if (!byGateway[t.gatewaySlug]) {
+   483→      byGateway[t.gatewaySlug] = { count: 0, volume: 0 };
+   484→    }
+   485→    byGateway[t.gatewaySlug].count += 1;
+   486→    if (t.status === 'succeeded') {
+   487→      byGateway[t.gatewaySlug].volume += t.amountCents;
+   488→    }
+   489→  }
+   490→
+   491→  return {
+   492→    totalVolume,
+   493→    succeededCount,
+   494→    failedCount,
+   495→    pendingCount,
+   496→    refundedCount,
+   497→    disputedCount,
+   498→    totalCount,
+   499→    successRate,
+   500→    avgAmount,
+   501→    byGateway,
+   502→  };
+   503→}
+   504→
+   505→// ─── Transaction Volume (last 30 days) ────────────────────────
+   506→
+   507→export async function getTransactionVolume(workspaceId: string, days = 30) {
+   508→  const now = new Date();
+   509→  const startDate = new Date(now);
+   510→  startDate.setDate(startDate.getDate() - (days - 1));
+   511→  startDate.setHours(0, 0, 0, 0);
+   512→
+   513→  const transactions = await db.transaction.findMany({
+   514→    where: {
+   515→      workspaceId,
+   516→      createdAt: { gte: startDate },
+   517→    },
+   518→    select: {
+   519→      amountCents: true,
+   520→      status: true,
+   521→      createdAt: true,
+   522→    },
+   523→  });
+   524→
+   525→  const data: { date: string; volume: number; count: number; failed: number }[] = [];
+   526→  for (let i = days - 1; i >= 0; i--) {
+   527→    const d = new Date(now);
+   528→    d.setDate(d.getDate() - i);
+   529→    d.setHours(0, 0, 0, 0);
+   530→    const dayEnd = new Date(d);
+   531→    dayEnd.setHours(23, 59, 59, 999);
+   532→
+   533→    const dayTxns = transactions.filter(
+   534→      (t) => t.createdAt >= d && t.createdAt <= dayEnd
+   535→    );
+   536→
+   537→    const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+   538→    const volume = dayTxns
+   539→      .filter((t) => t.status === 'succeeded')
+   540→      .reduce((s, t) => s + t.amountCents, 0);
+   541→    const count = dayTxns.filter((t) => t.status === 'succeeded').length;
+   542→    const failed = dayTxns.filter((t) => t.status === 'failed').length;
+   543→
+   544→    data.push({ date: label, volume, count, failed });
+   545→  }
+   546→
+   547→  return data;
+   548→}
+   549→
+   550→// ─── Analytics: Monthly Revenue (last 12 months) ──────────────
+   551→
+   552→export async function getMonthlyRevenue(workspaceId: string) {
+   553→  const now = new Date();
+   554→  const data: { date: string; amount: number }[] = [];
+   555→
+   556→  // Pull all paid transactions and group by month.
+   557→  const txns = await db.transaction.findMany({
+   558→    where: { workspaceId, status: 'succeeded' },
+   559→    select: { amountCents: true, createdAt: true },
+   560→  });
+   561→
+   562→  for (let i = 11; i >= 0; i--) {
+   563→    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+   564→    const label = d.toLocaleDateString('en-US', {
+   565→      month: 'short',
+   566→      year: '2-digit',
+   567→    });
+   568→    const monthStart = new Date(d.getFullYear(), d.getMonth(), 1);
+   569→    const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+   570→    const amount = txns
+   571→      .filter((t) => t.createdAt >= monthStart && t.createdAt < monthEnd)
+   572→      .reduce((s, t) => s + t.amountCents, 0);
+   573→    data.push({ date: label, amount });
+   574→  }
+   575→
+   576→  // If no real transactions yet, fall back to invoice-derived revenue
+   577→  // so the dashboard chart isn't empty on a fresh workspace.
+   578→  const totalFromData = data.reduce((s, d) => s + d.amount, 0);
+   579→  if (totalFromData === 0) {
+   580→    const paidInvoices = await db.invoice.findMany({
+   581→      where: { workspaceId, status: 'paid' },
+   582→      select: { totalCents: true, createdAt: true },
+   583→    });
+   584→    for (let i = 0; i < data.length; i++) {
+   585→      const d = new Date(now.getFullYear(), now.getMonth() - (11 - i), 1);
+   586→      const monthStart = new Date(d.getFullYear(), d.getMonth(), 1);
+   587→      const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+   588→      data[i].amount = paidInvoices
+   589→        .filter((inv) => inv.createdAt >= monthStart && inv.createdAt < monthEnd)
+   590→        .reduce((s, inv) => s + inv.totalCents, 0);
+   591→    }
+   592→  }
+   593→
+   594→  return data;
+   595→}
+   596→
+   597→// ─── Analytics: Gateway Revenue ───────────────────────────────
+   598→
+   599→export async function getGatewayRevenue(workspaceId: string) {
+   600→  const gateways = await db.gatewayCredential.findMany({
+   601→    where: { workspaceId },
+   602→    select: { id: true, gatewaySlug: true, label: true },
+   603→  });
+   604→
+   605→  const result: { gateway: string; revenue: number; count: number }[] = [];
+   606→
+   607→  for (const gw of gateways) {
+   608→    const txns = await db.transaction.findMany({
+   609→      where: { workspaceId, gatewayId: gw.id, status: 'succeeded' },
+   610→      select: { amountCents: true },
+   611→    });
+   612→    const revenue = txns.reduce((s, t) => s + t.amountCents, 0);
+   613→    result.push({
+   614→      gateway: gw.label || gw.gatewaySlug,
+   615→      revenue,
+   616→      count: txns.length,
+   617→    });
+   618→  }
+   619→
+   620→  // Also include legacy invoice-derived gateway revenue for backward compat
+   621→  const invoices = await db.invoice.findMany({
+   622→    where: { workspaceId, status: 'paid' },
+   623→    select: { paidViaGateway: true, customPaymentGateway: true, totalCents: true },
+   624→  });
+   625→  for (const inv of invoices) {
+   626→    const slug = inv.customPaymentGateway || inv.paidViaGateway;
+   627→    if (!slug) continue;
+   628→    const existing = result.find((r) => r.gateway.toLowerCase() === slug.toLowerCase());
+   629→    if (existing) {
+   630→      // Only count if no transaction-level revenue was found (avoid double counting)
+   631→      if (existing.revenue === 0) {
+   632→        existing.revenue += inv.totalCents;
+   633→        existing.count += 1;
+   634→      }
+   635→    } else {
+   636→      result.push({ gateway: slug, revenue: inv.totalCents, count: 1 });
+   637→    }
+   638→  }
+   639→
+   640→  return result;
+   641→}
+   642→
+   643→// ─── Analytics: Success/Failure Rates ─────────────────────────
+   644→
+   645→export async function getSuccessFailureRates(workspaceId: string) {
+   646→  const now = new Date();
+   647→  const data: { date: string; success: number; failed: number }[] = [];
+   648→
+   649→  for (let i = 5; i >= 0; i--) {
+   650→    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+   651→    const label = d.toLocaleDateString('en-US', { month: 'short' });
+   652→    const monthStart = new Date(d.getFullYear(), d.getMonth(), 1);
+   653→    const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+   654→
+   655→    const [succeeded, failed] = await Promise.all([
+   656→      db.transaction.count({
+   657→        where: {
+   658→          workspaceId,
+   659→          status: 'succeeded',
+   660→          createdAt: { gte: monthStart, lt: monthEnd },
+   661→        },
+   662→      }),
+   663→      db.transaction.count({
+   664→        where: {
+   665→          workspaceId,
+   666→          status: 'failed',
+   667→          createdAt: { gte: monthStart, lt: monthEnd },
+   668→        },
+   669→      }),
+   670→    ]);
+   671→
+   672→    const total = succeeded + failed;
+   673→    data.push({
+   674→      date: label,
+   675→      success: total > 0 ? Math.round((succeeded / total) * 100) : 0,
+   676→      failed: total > 0 ? Math.round((failed / total) * 100) : 0,
+   677→    });
+   678→  }
+   679→
+   680→  return data;
+   681→}
+   682→
+   683→// ─── Analytics: Top Customers ─────────────────────────────────
+   684→
+   685→export async function getTopCustomers(workspaceId: string) {
+   686→  const clients = await db.client.findMany({
+   687→    where: { workspaceId },
+   688→    orderBy: { totalSpendCents: 'desc' },
+   689→    take: 5,
+   690→  });
+   691→  return clients.map((c) => ({
+   692→    name: c.name,
+   693→    email: c.email || '',
+   694→    company: c.company || '',
+   695→    totalSpend: c.totalSpendCents,
+   696→    transactionCount: c.transactionCount,
+   697→  }));
+   698→}
+   699→
+   700→// ─── Finance: Cash Ledger & Metrics ──────────────────────────
+   701→
+   702→export interface LedgerEntry {
+   703→  id: string;
+   704→  direction: 'incoming' | 'outgoing';
+   705→  amount_cents: number;
+   706→  note: string;
+   707→  occurred_at: string;
+   708→  type: 'payment' | 'fee' | 'payout' | 'refund';
+   709→  gateway?: string;
+   710→}
+   711→
+   712→export interface FinanceData {
+   713→  totalIncoming: number;
+   714→  totalOutgoing: number;
+   715→  totalFees: number;
+   716→  netCash: number;
+   717→  grossRevenue: number;
+   718→  outstanding: number;
+   719→  overdue: number;
+   720→  ledger: LedgerEntry[];
+   721→  monthlyRevenue: { month: string; revenue: number; fees: number }[];
+   722→  feeBreakdown: { gateway: string; fee: number; count: number }[];
+   723→}
+   724→
+   725→// Processing fee rates per gateway (typical rates)
+   726→const FEE_RATES: Record<string, { percent: number; fixed: number }> = {
+   727→  stripe: { percent: 0.029, fixed: 30 },
+   728→  paypal: { percent: 0.0349, fixed: 49 },
+   729→  square: { percent: 0.026, fixed: 10 },
+   730→  adyen: { percent: 0.026, fixed: 12 },
+   731→  razorpay: { percent: 0.020, fixed: 0 },
+   732→  authorize_net: { percent: 0.029, fixed: 30 },
+   733→  braintree: { percent: 0.029, fixed: 30 },
+   734→  mollie: { percent: 0.029, fixed: 25 },
+   735→  manual: { percent: 0, fixed: 0 },
+   736→  custom: { percent: 0.029, fixed: 30 },
+   737→};
+   738→
+   739→export async function getFinanceData(workspaceId: string): Promise<FinanceData> {
+   740→  const [transactions, invoices] = await Promise.all([
+   741→    db.transaction.findMany({
+   742→      where: { workspaceId },
+   743→      orderBy: { createdAt: 'desc' },
+   744→      take: 200,
+   745→      include: { gateway: true, invoice: true },
+   746→    }),
+   747→    db.invoice.findMany({
+   748→      where: { workspaceId },
+   749→      select: {
+   750→        totalCents: true,
+   751→        status: true,
+   752→        createdAt: true,
+   753→        updatedAt: true,
+   754→        paidViaGateway: true,
+   755→        customPaymentGateway: true,
+   756→      },
+   757→    }),
+   758→  ]);
+   759→
+   760→  // Build ledger from transactions
+   761→  const ledger: LedgerEntry[] = [];
+   762→
+   763→  for (const tx of transactions) {
+   764→    if (tx.status === 'succeeded') {
+   765→      // Incoming: payment received
+   766→      ledger.push({
+   767→        id: `led-in-${tx.id}`,
+   768→        direction: 'incoming',
+   769→        amount_cents: tx.amountCents,
+   770→        note: tx.invoice?.invoiceNumber
+   771→          ? `Payment for ${tx.invoice.invoiceNumber}`
+   772→          : `Payment from ${tx.customerName || tx.customerEmail || 'customer'}`,
+   773→        occurred_at: tx.createdAt.toISOString(),
+   774→        type: 'payment',
+   775→        gateway: tx.gatewaySlug,
+   776→      });
+   777→
+   778→      // Outgoing: processing fee
+   779→      const rate = FEE_RATES[tx.gatewaySlug] || FEE_RATES.custom;
+   780→      const fee = Math.round(tx.amountCents * rate.percent + rate.fixed);
+   781→      if (fee > 0) {
+   782→        ledger.push({
+   783→          id: `led-fee-${tx.id}`,
+   784→          direction: 'outgoing',
+   785→          amount_cents: fee,
+   786→          note: `${tx.gatewaySlug} processing fee`,
+   787→          occurred_at: tx.createdAt.toISOString(),
+   788→          type: 'fee',
+   789→          gateway: tx.gatewaySlug,
+   790→        });
+   791→      }
+   792→    } else if (tx.status === 'refunded') {
+   793→      ledger.push({
+   794→        id: `led-ref-${tx.id}`,
+   795→        direction: 'outgoing',
+   796→        amount_cents: tx.amountCents,
+   797→        note: `Refund for ${tx.invoice?.invoiceNumber || tx.externalId || 'transaction'}`,
+   798→        occurred_at: tx.updatedAt.toISOString(),
+   799→        type: 'refund',
+   800→        gateway: tx.gatewaySlug,
+   801→      });
+   802→    }
+   803→  }
+   804→
+   805→  // Add monthly payout entries (synthesized for demo)
+   806→  const now = new Date();
+   807→  for (let i = 0; i < 3; i++) {
+   808→    const payoutDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+   809→    const monthRevenue = transactions
+   810→      .filter((t) => {
+   811→        if (t.status !== 'succeeded') return false;
+   812→        const d = t.createdAt;
+   813→        return d.getMonth() === payoutDate.getMonth() && d.getFullYear() === payoutDate.getFullYear();
+   814→      })
+   815→      .reduce((s, t) => s + t.amountCents, 0);
+   816→    if (monthRevenue > 0) {
+   817→      const payoutAmount = Math.round(monthRevenue * 0.7); // 70% payout
+   818→      ledger.push({
+   819→        id: `led-payout-${i}`,
+   820→        direction: 'outgoing',
+   821→        amount_cents: payoutAmount,
+   822→        note: `Monthly payout to bank account`,
+   823→        occurred_at: payoutDate.toISOString(),
+   824→        type: 'payout',
+   825→      });
+   826→    }
+   827→  }
+   828→
+   829→  // Sort ledger by date descending
+   830→  ledger.sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime());
+   831→
+   832→  const totalIncoming = ledger
+   833→    .filter((e) => e.direction === 'incoming')
+   834→    .reduce((s, e) => s + e.amount_cents, 0);
+   835→  const totalOutgoing = ledger
+   836→    .filter((e) => e.direction === 'outgoing')
+   837→    .reduce((s, e) => s + e.amount_cents, 0);
+   838→  const totalFees = ledger
+   839→    .filter((e) => e.type === 'fee')
+   840→    .reduce((s, e) => s + e.amount_cents, 0);
+   841→  const netCash = totalIncoming - totalOutgoing;
+   842→
+   843→  const grossRevenue = invoices
+   844→    .filter((i) => i.status === 'paid')
+   845→    .reduce((s, i) => s + i.totalCents, 0);
+   846→  const outstanding = invoices
+   847→    .filter((i) => ['sent', 'viewed'].includes(i.status))
+   848→    .reduce((s, i) => s + i.totalCents, 0);
+   849→  const overdue = invoices
+   850→    .filter((i) => i.status === 'overdue')
+   851→    .reduce((s, i) => s + i.totalCents, 0);
+   852→
+   853→  // Monthly revenue + fees trend (last 6 months)
+   854→  const monthlyRevenue: { month: string; revenue: number; fees: number }[] = [];
+   855→  for (let i = 5; i >= 0; i--) {
+   856→    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+   857→    const monthLabel = d.toLocaleDateString('en-US', { month: 'short' });
+   858→    const monthStart = new Date(d.getFullYear(), d.getMonth(), 1);
+   859→    const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+   860→
+   861→    const monthTxns = transactions.filter(
+   862→      (t) => t.status === 'succeeded' && t.createdAt >= monthStart && t.createdAt < monthEnd
+   863→    );
+   864→    const revenue = monthTxns.reduce((s, t) => s + t.amountCents, 0);
+   865→    const fees = monthTxns.reduce((s, t) => {
+   866→      const rate = FEE_RATES[t.gatewaySlug] || FEE_RATES.custom;
+   867→      return s + Math.round(t.amountCents * rate.percent + rate.fixed);
+   868→    }, 0);
+   869→
+   870→    monthlyRevenue.push({ month: monthLabel, revenue, fees });
+   871→  }
+   872→
+   873→  // Fee breakdown by gateway
+   874→  const feeMap: Record<string, { fee: number; count: number }> = {};
+   875→  for (const tx of transactions) {
+   876→    if (tx.status !== 'succeeded') continue;
+   877→    const rate = FEE_RATES[tx.gatewaySlug] || FEE_RATES.custom;
+   878→    const fee = Math.round(tx.amountCents * rate.percent + rate.fixed);
+   879→    if (!feeMap[tx.gatewaySlug]) feeMap[tx.gatewaySlug] = { fee: 0, count: 0 };
+   880→    feeMap[tx.gatewaySlug].fee += fee;
+   881→    feeMap[tx.gatewaySlug].count += 1;
+   882→  }
+   883→  const feeBreakdown = Object.entries(feeMap)
+   884→    .map(([gateway, data]) => ({ gateway, fee: data.fee, count: data.count }))
+   885→    .sort((a, b) => b.fee - a.fee);
+   886→
+   887→  return {
+   888→    totalIncoming,
+   889→    totalOutgoing,
+   890→    totalFees,
+   891→    netCash,
+   892→    grossRevenue,
+   893→    outstanding,
+   894→    overdue,
+   895→    ledger,
+   896→    monthlyRevenue,
+   897→    feeBreakdown,
+   898→  };
+   899→}
+   900→
+   901→// ─── Disputes ────────────────────────────────────────────────
+   902→
+   903→export interface Dispute {
+   904→  id: string;
+   905→  gateway_dispute_id: string;
+   906→  gateway_slug: string;
+   907→  gateway_label: string | null;
+   908→  reason: string;
+   909→  amount_cents: number;
+   910→  currency: string;
+   911→  status: 'needs_response' | 'under_review' | 'won' | 'lost' | 'chargeback';
+   912→  evidence_count: number;
+   913→  evidence_due_at: string | null;
+   914→  created_at: string;
+   915→  invoice_number: string | null;
+   916→  customer_email: string | null;
+   917→  customer_name: string | null;
+   918→}
+   919→
+   920→// Note: All dispute data comes from real db.transaction rows with status='disputed'.
+   921→// No hardcoded/demo dispute data — everything is real DB-backed.
+   922→
+   923→export async function getDisputes(workspaceId: string): Promise<Dispute[]> {
+   924→  // Fetch ALL real disputed transactions from DB (no demo data)
+   925→  const disputedTxns = await db.transaction.findMany({
+   926→    where: { workspaceId, status: 'disputed' },
+   927→    include: { gateway: true, invoice: true },
+   928→    orderBy: { createdAt: 'desc' },
+   929→  });
+   930→
+   931→  // Convert disputed transactions to dispute format
+   932→  return disputedTxns.map((tx) => ({
+   933→    id: `dsp-tx-${tx.id}`,
+   934→    gateway_dispute_id: tx.externalId || tx.id.slice(0, 12),
+   935→    gateway_slug: tx.gatewaySlug,
+   936→    gateway_label: tx.gateway?.label || null,
+   937→    reason: tx.failureReason || 'Disputed by customer',
+   938→    amount_cents: tx.amountCents,
+   939→    currency: tx.currency,
+   940→    status: 'needs_response',
+   941→    evidence_count: 0,
+   942→    evidence_due_at: null,
+   943→    created_at: tx.createdAt.toISOString(),
+   944→    invoice_number: tx.invoice?.invoiceNumber || null,
+   945→    customer_email: tx.customerEmail || null,
+   946→    customer_name: tx.customerName || null,
+   947→  }));
+   948→}
+   949→
+   950→export async function getDisputeStats(workspaceId: string) {
+   951→  const disputes = await getDisputes(workspaceId);
+   952→  const needsResponse = disputes.filter((d) => d.status === 'needs_response').length;
+   953→  const underReview = disputes.filter((d) => d.status === 'under_review').length;
+   954→  const won = disputes.filter((d) => d.status === 'won').length;
+   955→  const lost = disputes.filter((d) => d.status === 'lost').length;
+   956→  const totalDisputed = disputes.reduce((s, d) => s + d.amount_cents, 0);
+   957→  const winRate = won + lost > 0 ? Math.round((won / (won + lost)) * 100) : 0;
+   958→  const atRisk = disputes
+   959→    .filter((d) => d.status === 'needs_response' || d.status === 'under_review')
+   960→    .reduce((s, d) => s + d.amount_cents, 0);
+   961→
+   962→  return {
+   963→    total: disputes.length,
+   964→    needsResponse,
+   965→    underReview,
+   966→    won,
+   967→    lost,
+   968→    totalDisputed,
+   969→    winRate,
+   970→    atRisk,
+   971→    disputes,
+   972→  };
+   973→}
+   974→
+   975→// ─── Aggregated Dashboard Stats ───────────────────────────────
+   976→
+   977→export async function getDashboardStats(workspaceId: string) {
+   978→  // Demo workspace fallback
+   979→  if (workspaceId === 'ws-demo-workspace') {
+   980→    return {
+   981→      totalRevenue: 0, pendingAmount: 0, overdueAmount: 0,
+   982→      paidCount: 0, totalCount: 0, successRate: 0,
+   983→      mrr: 0, clientCount: 0, activeGateways: 0,
+   984→    };
+   985→  }
+   986→  try {
+   987→    const invoices = await db.invoice.findMany({
+   988→      where: { workspaceId },
+   989→      select: {
+   990→        totalCents: true,
+   991→        status: true,
+   992→        createdAt: true,
+   993→      },
+   994→    });
+   995→
+   996→    const totalRevenue = invoices
+   997→      .filter((i) => i.status === 'paid')
+   998→      .reduce((s, i) => s + i.totalCents, 0);
+   999→    const pendingAmount = invoices
+  1000→      .filter((i) => ['sent', 'viewed', 'draft'].includes(i.status))
+  1001→      .reduce((s, i) => s + i.totalCents, 0);
+  1002→    const overdueAmount = invoices
+  1003→      .filter((i) => i.status === 'overdue')
+  1004→      .reduce((s, i) => s + i.totalCents, 0);
+  1005→    const paidCount = invoices.filter((i) => i.status === 'paid').length;
+  1006→    const totalCount = invoices.length;
+  1007→    const successRate =
+  1008→      totalCount > 0 ? Math.round((paidCount / totalCount) * 100) : 0;
+  1009→
+  1010→    const thisMonth = new Date();
+  1011→    thisMonth.setDate(1);
+  1012→    thisMonth.setHours(0, 0, 0, 0);
+  1013→    const mrr = invoices
+  1014→      .filter((i) => i.status === 'paid' && i.createdAt >= thisMonth)
+  1015→      .reduce((s, i) => s + i.totalCents, 0);
+  1016→
+  1017→    const [clientCount, activeGateways] = await Promise.all([
+  1018→      db.client.count({ where: { workspaceId } }),
+  1019→      db.gatewayCredential.count({ where: { workspaceId, isActive: true } }),
+  1020→    ]);
+  1021→
+  1022→    return {
+  1023→      totalRevenue,
+  1024→      pendingAmount,
+  1025→      overdueAmount,
+  1026→      paidCount,
+  1027→      totalCount,
+  1028→      successRate,
+  1029→      mrr,
+  1030→      clientCount,
+  1031→      activeGateways,
+  1032→    };
+  1033→  } catch {
+  1034→    return {
+  1035→      totalRevenue: 0, pendingAmount: 0, overdueAmount: 0,
+  1036→      paidCount: 0, totalCount: 0, successRate: 0,
+  1037→      mrr: 0, clientCount: 0, activeGateways: 0,
+  1038→    };
+  1039→  }
+  1040→}
+  1041→
+  1042→// ─── Onboarding ──────────────────────────────────────────────
+  1043→
+  1044→export interface OnboardingState {
+  1045→  stepGateway: boolean;
+  1046→  stepBrand: boolean;
+  1047→  stepClient: boolean;
+  1048→  stepInvoice: boolean;
+  1049→  walkthroughSkipped: boolean;
+  1050→  completionPct: number;
+  1051→  completed: boolean;
+  1052→}
+  1053→
+  1054→export async function getOnboardingState(workspaceId: string): Promise<OnboardingState> {
+  1055→  // Demo workspace: show as all-complete
+  1056→  if (workspaceId === 'ws-demo-workspace') {
+  1057→    return {
+  1058→      stepGateway: true, stepBrand: true, stepClient: true, stepInvoice: true,
+  1059→      walkthroughSkipped: true, completionPct: 100, completed: true,
+  1060→    };
+  1061→  }
+  1062→  try {
+  1063→    // Get or create onboarding progress
+  1064→    let progress = await db.onboardingProgress.findUnique({
+  1065→      where: { workspaceId },
+  1066→    });
+  1067→
+  1068→    if (!progress) {
+  1069→      // Auto-create by checking actual workspace state
+  1070→      // Only count ACTIVE gateways with a secret key configured
+  1071→      const [activeGatewayCount, clientCount, invoiceCount] = await Promise.all([
+  1072→        db.gatewayCredential.count({ where: { workspaceId, isActive: true, secretKeyEnc: { not: null } } }),
+  1073→        db.client.count({ where: { workspaceId } }),
+  1074→        db.invoice.count({ where: { workspaceId } }),
+  1075→      ]);
+  1076→
+  1077→      const workspace = await db.workspace.findUnique({
+  1078→        where: { id: workspaceId },
+  1079→        select: { name: true },
+  1080→      });
+  1081→
+  1082→      progress = await db.onboardingProgress.create({
+  1083→        data: {
+  1084→          workspaceId,
+  1085→          stepGateway: activeGatewayCount > 0,
+  1086→          stepBrand: workspace?.name !== 'My Workspace' && Boolean(workspace?.name),
+  1087→          stepClient: clientCount > 0,
+  1088→          stepInvoice: invoiceCount > 0,
+  1089→          walkthroughSkipped: false,
+  1090→        },
+  1091→      });
+  1092→    } else {
+  1093→      // Sync with actual state — auto-detect completed steps
+  1094→      // Only count ACTIVE gateways with a secret key configured
+  1095→      const [activeGatewayCount, clientCount, invoiceCount] = await Promise.all([
+  1096→        db.gatewayCredential.count({ where: { workspaceId, isActive: true, secretKeyEnc: { not: null } } }),
+  1097→        db.client.count({ where: { workspaceId } }),
+  1098→        db.invoice.count({ where: { workspaceId } }),
+  1099→      ]);
+  1100→
+  1101→      const workspace = await db.workspace.findUnique({
+  1102→        where: { id: workspaceId },
+  1103→        select: { name: true },
+  1104→      });
+  1105→
+  1106→      const needsUpdate =
+  1107→        (activeGatewayCount > 0 !== progress.stepGateway) ||
+  1108→        (clientCount > 0 !== progress.stepClient) ||
+  1109→        (invoiceCount > 0 !== progress.stepInvoice);
+  1110→
+  1111→      if (needsUpdate) {
+  1112→        progress = await db.onboardingProgress.update({
+  1113→          where: { workspaceId },
+  1114→          data: {
+  1115→            stepGateway: progress.stepGateway || activeGatewayCount > 0,
+  1116→            stepClient: progress.stepClient || clientCount > 0,
+  1117→            stepInvoice: progress.stepInvoice || invoiceCount > 0,
+  1118→          },
+  1119→        });
+  1120→      }
+  1121→    }
+  1122→
+  1123→    const completedSteps = [progress.stepGateway, progress.stepBrand, progress.stepClient, progress.stepInvoice].filter(Boolean).length;
+  1124→    const completionPct = Math.round((completedSteps / 4) * 100);
+  1125→
+  1126→    return {
+  1127→      stepGateway: progress.stepGateway,
+  1128→      stepBrand: progress.stepBrand,
+  1129→      stepClient: progress.stepClient,
+  1130→      stepInvoice: progress.stepInvoice,
+  1131→      walkthroughSkipped: progress.walkthroughSkipped,
+  1132→      completionPct,
+  1133→      completed: completionPct === 100,
+  1134→    };
+  1135→  } catch {
+  1136→    // DB offline — return a neutral state
+  1137→    return {
+  1138→      stepGateway: false, stepBrand: false, stepClient: false, stepInvoice: false,
+  1139→      walkthroughSkipped: false, completionPct: 0, completed: false,
+  1140→    };
+  1141→  }
+  1142→}
+  1143→
+  1144→export async function updateOnboardingStep(workspaceId: string, step: string, value: boolean) {
+  1145→  const data: any = {};
+  1146→  data[step] = value;
+  1147→
+  1148→  const progress = await db.onboardingProgress.upsert({
+  1149→    where: { workspaceId },
+  1150→    update: data,
+  1151→    create: {
+  1152→      workspaceId,
+  1153→      ...data,
+  1154→    },
+  1155→  });
+  1156→
+  1157→  const completedSteps = [progress.stepGateway, progress.stepBrand, progress.stepClient, progress.stepInvoice].filter(Boolean).length;
+  1158→  const completionPct = Math.round((completedSteps / 4) * 100);
+  1159→
+  1160→  // Update workspace.onboardingCompleted when 100%
+  1161→  if (completionPct === 100) {
+  1162→    await db.workspace.update({
+  1163→      where: { id: workspaceId },
+  1164→      data: { onboardingCompleted: true },
+  1165→    });
+  1166→  }
+  1167→
+  1168→  return {
+  1169→    ...progress,
+  1170→    completionPct,
+  1171→    completed: completionPct === 100,
+  1172→  };
+  1173→}
+  1174→
+  1175→// ─── Subscriptions (real DB-backed) ──────────────────────────
+  1176→
+  1177→export interface SubscriptionData {
+  1178→  id: string;
+  1179→  client_id: string | null;
+  1180→  client_name: string | null;
+  1181→  client_email: string | null;
+  1182→  plan_name: string;
+  1183→  amount_cents: number;
+  1184→  currency: string;
+  1185→  status: string;
+  1186→  cycle: string;
+  1187→  gateway_slug: string | null;
+  1188→  gateway_label: string | null;
+  1189→  next_billing_at: string | null;
+  1190→  started_at: string;
+  1191→  canceled_at: string | null;
+  1192→}
+  1193→
+  1194→export async function getSubscriptions(workspaceId: string): Promise<SubscriptionData[]> {
+  1195→  const subs = await db.subscription.findMany({
+  1196→    where: { workspaceId },
+  1197→    include: { client: true, gateway: true },
+  1198→    orderBy: { createdAt: 'desc' },
+  1199→  });
+  1200→
+  1201→  return subs.map((s) => ({
+  1202→    id: s.id,
+  1203→    client_id: s.clientId,
+  1204→    client_name: s.client?.name || null,
+  1205→    client_email: s.client?.email || null,
+  1206→    plan_name: s.planName,
+  1207→    amount_cents: s.amountCents,
+  1208→    currency: s.currency,
+  1209→    status: s.status,
+  1210→    cycle: s.cycle,
+  1211→    gateway_slug: s.gatewaySlug,
+  1212→    gateway_label: s.gateway?.label || null,
+  1213→    next_billing_at: s.nextBillingAt ? s.nextBillingAt.toISOString() : null,
+  1214→    started_at: s.startedAt.toISOString(),
+  1215→    canceled_at: s.canceledAt ? s.canceledAt.toISOString() : null,
+  1216→  }));
+  1217→}
+  1218→
+  1219→// ─── Automation Rules (real DB-backed) ───────────────────────
+  1220→
+  1221→export interface AutomationRuleData {
+  1222→  id: string;
+  1223→  name: string;
+  1224→  trigger: string;
+  1225→  action: string;
+  1226→  gateway_slug: string | null;
+  1227→  status: string;
+  1228→  executions: number;
+  1229→  last_run_at: string | null;
+  1230→  created_at: string;
+  1231→}
+  1232→
+  1233→export async function getAutomationRules(workspaceId: string): Promise<AutomationRuleData[]> {
+  1234→  const rules = await db.automationRule.findMany({
+  1235→    where: { workspaceId },
+  1236→    orderBy: { createdAt: 'desc' },
+  1237→  });
+  1238→
+  1239→  return rules.map((r) => ({
+  1240→    id: r.id,
+  1241→    name: r.name,
+  1242→    trigger: r.trigger,
+  1243→    action: r.action,
+  1244→    gateway_slug: r.gatewaySlug,
+  1245→    status: r.status,
+  1246→    executions: r.executions,
+  1247→    last_run_at: r.lastRunAt ? r.lastRunAt.toISOString() : null,
+  1248→    created_at: r.createdAt.toISOString(),
+  1249→  }));
+  1250→}
+  1251→
+  1252→// ─── Webhook Endpoints (user-configured URLs) ───────────────
+  1253→
+  1254→export interface WebhookEndpointData {
+  1255→  id: string;
+  1256→  label: string;
+  1257→  url: string;
+  1258→  events: string[];
+  1259→  is_active: boolean;
+  1260→  has_secret: boolean;
+  1261→  last_triggered_at: string | null;
+  1262→  last_status: string | null;
+  1263→  created_at: string;
+  1264→}
+  1265→
+  1266→export async function getWebhookEndpoints(workspaceId: string): Promise<WebhookEndpointData[]> {
+  1267→  const eps = await db.webhookEndpoint.findMany({
+  1268→    where: { workspaceId },
+  1269→    orderBy: { createdAt: 'desc' },
+  1270→  });
+  1271→  return eps.map((e) => ({
+  1272→    id: e.id,
+  1273→    label: e.label,
+  1274→    url: e.url,
+  1275→    events: e.events === '*' || !e.events ? [] : e.events.split(',').map((s) => s.trim()).filter(Boolean),
+  1276→    is_active: e.isActive,
+  1277→    has_secret: !!e.secret,
+  1278→    last_triggered_at: e.lastTriggeredAt ? e.lastTriggeredAt.toISOString() : null,
+  1279→    last_status: e.lastStatus,
+  1280→    created_at: e.createdAt.toISOString(),
+  1281→  }));
+  1282→}
+  1283→
+  1284→// ─── Webhook Deliveries (audit trail of dispatches) ─────────
+  1285→
+  1286→export interface WebhookDeliveryData {
+  1287→  id: string;
+  1288→  webhook_event_id: string | null;
+  1289→  webhook_endpoint_id: string | null;
+  1290→  status: string;
+  1291→  status_code: number | null;
+  1292→  error: string | null;
+  1293→  duration_ms: number | null;
+  1294→  attempted_at: string;
+  1295→}
+  1296→
+  1297→export async function getWebhookDeliveries(workspaceId: string, limit = 30): Promise<WebhookDeliveryData[]> {
+  1298→  const ds = await db.webhookDelivery.findMany({
+  1299→    where: { workspaceId },
+  1300→    orderBy: { attemptedAt: 'desc' },
+  1301→    take: limit,
+  1302→  });
+  1303→  return ds.map((d) => ({
+  1304→    id: d.id,
+  1305→    webhook_event_id: d.webhookEventId,
+  1306→    webhook_endpoint_id: d.webhookEndpointId,
+  1307→    status: d.status,
+  1308→    status_code: d.statusCode,
+  1309→    error: d.error,
+  1310→    duration_ms: d.durationMs,
+  1311→    attempted_at: d.attemptedAt.toISOString(),
+  1312→  }));
+  1313→}
+  1314→
+  1315→// ─── Invoice Reminders (history per workspace) ──────────────
+  1316→
+  1317→export interface InvoiceReminderData {
+  1318→  id: string;
+  1319→  invoice_id: string;
+  1320→  invoice_number: string | null;
+  1321→  type: string;
+  1322→  message: string | null;
+  1323→  sent_at: string;
+  1324→  client_name: string | null;
+  1325→  total_cents: number;
+  1326→  status: string;
+  1327→}
+  1328→
+  1329→export async function getInvoiceReminders(workspaceId: string, limit = 50): Promise<InvoiceReminderData[]> {
+  1330→  const reminders = await db.invoiceReminder.findMany({
+  1331→    where: { workspaceId },
+  1332→    orderBy: { sentAt: 'desc' },
+  1333→    take: limit,
+  1334→    include: { invoice: { include: { client: true } } },
+  1335→  });
+  1336→  return reminders.map((r) => ({
+  1337→    id: r.id,
+  1338→    invoice_id: r.invoiceId,
+  1339→    invoice_number: r.invoice.invoiceNumber,
+  1340→    type: r.type,
+  1341→    message: r.message,
+  1342→    sent_at: r.sentAt.toISOString(),
+  1343→    client_name: r.invoice.client?.name ?? null,
+  1344→    total_cents: r.invoice.totalCents,
+  1345→    status: r.invoice.status,
+  1346→  }));
+  1347→}
+  1348→
+  1349→// ─── Webhook Endpoint Statistics ─────────────────────────────
+  1350→
+  1351→export interface WebhookEndpointStats {
+  1352→  endpoint_id: string;
+  1353→  total_deliveries: number;
+  1354→  successful: number;
+  1355→  failed: number;
+  1356→  success_rate: number; // 0-100
+  1357→  avg_latency_ms: number | null;
+  1358→  p95_latency_ms: number | null;
+  1359→  p99_latency_ms: number | null;
+  1360→  min_latency_ms: number | null;
+  1361→  max_latency_ms: number | null;
+  1362→  last_delivery_at: string | null;
+  1363→}
+  1364→
+  1365→export async function getWebhookEndpointStats(workspaceId: string): Promise<WebhookEndpointStats[]> {
+  1366→  // Get all endpoints for the workspace
+  1367→  const endpoints = await db.webhookEndpoint.findMany({
+  1368→    where: { workspaceId },
+  1369→    select: { id: true, label: true, url: true },
+  1370→  });
+  1371→
+  1372→  if (endpoints.length === 0) return [];
+  1373→
+  1374→  // Get all deliveries for these endpoints (last 1000 per endpoint for stats)
+  1375→  const deliveries = await db.webhookDelivery.findMany({
+  1376→    where: {
+  1377→      workspaceId,
+  1378→      webhookEndpointId: { in: endpoints.map((e) => e.id) },
+  1379→    },
+  1380→    orderBy: { attemptedAt: 'desc' },
+  1381→    take: 1000,
+  1382→    select: {
+  1383→      webhookEndpointId: true,
+  1384→      status: true,
+  1385→      statusCode: true,
+  1386→      durationMs: true,
+  1387→      attemptedAt: true,
+  1388→    },
+  1389→  });
+  1390→
+  1391→  // Group by endpoint
+  1392→  const byEndpoint = new Map<string, typeof deliveries>();
+  1393→  for (const d of deliveries) {
+  1394→    const epId = d.webhookEndpointId;
+  1395→    if (!epId) continue;
+  1396→    if (!byEndpoint.has(epId)) byEndpoint.set(epId, []);
+  1397→    byEndpoint.get(epId)!.push(d);
+  1398→  }
+  1399→
+  1400→  return endpoints.map((ep) => {
+  1401→    const eps = byEndpoint.get(ep.id) || [];
+  1402→    const total = eps.length;
+  1403→    const successful = eps.filter((d) => d.status === 'ok').length;
+  1404→    const failed = eps.filter((d) => d.status === 'failed').length;
+  1405→    const latencies = eps
+  1406→      .filter((d) => d.durationMs != null)
+  1407→      .map((d) => d.durationMs!)
+  1408→      .sort((a, b) => a - b);
+  1409→    const successRate = total > 0 ? Math.round((successful / total) * 100) : 0;
+  1410→    const avg = latencies.length > 0 ? Math.round(latencies.reduce((s, n) => s + n, 0) / latencies.length) : null;
+  1411→    const p95 = latencies.length > 0 ? latencies[Math.min(latencies.length - 1, Math.floor(latencies.length * 0.95))] : null;
+  1412→    const p99 = latencies.length > 0 ? latencies[Math.min(latencies.length - 1, Math.floor(latencies.length * 0.99))] : null;
+  1413→    const min = latencies.length > 0 ? latencies[0] : null;
+  1414→    const max = latencies.length > 0 ? latencies[latencies.length - 1] : null;
+  1415→    const lastAt = eps.length > 0 ? eps[0].attemptedAt.toISOString() : null;
+  1416→    return {
+  1417→      endpoint_id: ep.id,
+  1418→      total_deliveries: total,
+  1419→      successful,
+  1420→      failed,
+  1421→      success_rate: successRate,
+  1422→      avg_latency_ms: avg,
+  1423→      p95_latency_ms: p95,
+  1424→      p99_latency_ms: p99,
+  1425→      min_latency_ms: min,
+  1426→      max_latency_ms: max,
+  1427→      last_delivery_at: lastAt,
+  1428→    };
+  1429→  });
+  1430→}
+  1431→
+  1432→// ─── Invoice Open Heatmap (day-of-week × hour-of-day) ───────
+  1433→
+  1434→export interface InvoiceHeatmapData {
+  1435→  // 7 days × 24 hours = 168 cells, each with the count of views
+  1436→  // days: 0=Sun, 1=Mon, ..., 6=Sat
+  1437→  // hours: 0-23
+  1438→  cells: { day: number; hour: number; count: number }[];
+  1439→  total_views: number;
+  1440→  peak_day: number | null;
+  1441→  peak_hour: number | null;
+  1442→  peak_cell: { day: number; hour: number; count: number } | null;
+  1443→}
+  1444→
+  1445→export async function getInvoiceOpenHeatmap(workspaceId: string): Promise<InvoiceHeatmapData> {
+  1446→  // Get all invoice views for the workspace (via the Invoice join)
+  1447→  const views = await db.invoiceView.findMany({
+  1448→    where: { invoice: { workspaceId } },
+  1449→    select: { viewedAt: true },
+  1450→    take: 10000,
+  1451→  });
+  1452→
+  1453→  // Build a 7×24 grid (initialized to 0)
+  1454→  const grid: number[][] = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => 0));
+  1455→  let totalViews = 0;
+  1456→  let peakDay: number | null = null;
+  1457→  let peakHour: number | null = null;
+  1458→  let peakCell: { day: number; hour: number; count: number } | null = null;
+  1459→  let peakCount = 0;
+  1460→
+  1461→  // Day/hour totals for finding peaks
+  1462→  const dayTotals = new Array(7).fill(0);
+  1463→  const hourTotals = new Array(24).fill(0);
+  1464→
+  1465→  for (const v of views) {
+  1466→    const d = new Date(v.viewedAt);
+  1467→    const day = d.getDay();
+  1468→    const hour = d.getHours();
+  1469→    grid[day][hour]++;
+  1470→    dayTotals[day]++;
+  1471→    hourTotals[hour]++;
+  1472→    totalViews++;
+  1473→    if (grid[day][hour] > peakCount) {
+  1474→      peakCount = grid[day][hour];
+  1475→      peakCell = { day, hour, count: peakCount };
+  1476→    }
+  1477→  }
+  1478→
+  1479→  if (totalViews > 0) {
+  1480→    peakDay = dayTotals.indexOf(Math.max(...dayTotals));
+  1481→    peakHour = hourTotals.indexOf(Math.max(...hourTotals));
+  1482→  }
+  1483→
+  1484→  // Flatten grid to cells array
+  1485→  const cells: { day: number; hour: number; count: number }[] = [];
+  1486→  for (let day = 0; day < 7; day++) {
+  1487→    for (let hour = 0; hour < 24; hour++) {
+  1488→      cells.push({ day, hour, count: grid[day][hour] });
+  1489→    }
+  1490→  }
+  1491→
+  1492→  return {
+  1493→    cells,
+  1494→    total_views: totalViews,
+  1495→    peak_day: peakDay,
+  1496→    peak_hour: peakHour,
+  1497→    peak_cell: peakCell,
+  1498→  };
+  1499→}
+  1500→
+  1501→// ─── Webhook Delivery Trend (sparkline data) ─────────────────
+  1502→
+  1503→export interface WebhookDeliveryTrendPoint {
+  1504→  id: string;
+  1505→  status: string;
+  1506→  status_code: number | null;
+  1507→  duration_ms: number | null;
+  1508→  attempted_at: string;
+  1509→  event_type: string | null;
+  1510→}
+  1511→
+  1512→export async function getWebhookDeliveryTrend(
+  1513→  workspaceId: string,
+  1514→  endpointId: string,
+  1515→  limit = 30
+  1516→): Promise<WebhookDeliveryTrendPoint[]> {
+  1517→  // Verify ownership
+  1518→  const ep = await db.webhookEndpoint.findFirst({
+  1519→    where: { id: endpointId, workspaceId },
+  1520→    select: { id: true },
+  1521→  });
+  1522→  if (!ep) return [];
+  1523→
+  1524→  const deliveries = await db.webhookDelivery.findMany({
+  1525→    where: { webhookEndpointId: endpointId, workspaceId },
+  1526→    orderBy: { attemptedAt: 'desc' },
+  1527→    take: limit,
+  1528→    include: {
+  1529→      webhookEvent: { select: { eventType: true } },
+  1530→    },
+  1531→  });
+  1532→
+  1533→  // Reverse so oldest is first (for sparkline left-to-right)
+  1534→  return deliveries.reverse().map((d) => ({
+  1535→    id: d.id,
+  1536→    status: d.status,
+  1537→    status_code: d.statusCode,
+  1538→    duration_ms: d.durationMs,
+  1539→    attempted_at: d.attemptedAt.toISOString(),
+  1540→    event_type: d.webhookEvent?.eventType ?? null,
+  1541→  }));
+  1542→}
+  1543→
+  1544→// ─── Endpoint Health Check History (uptime tracking) ────────
+  1545→
+  1546→export interface HealthCheckHistoryPoint {
+  1547→  id: string;
+  1548→  endpoint_id: string;
+  1549→  status: string; // "healthy" | "unhealthy"
+  1550→  status_code: number | null;
+  1551→  duration_ms: number | null;
+  1552→  error: string | null;
+  1553→  triggered_by: string;
+  1554→  checked_at: string;
+  1555→}
+  1556→
+  1557→export interface EndpointUptimeStats {
+  1558→  endpoint_id: string;
+  1559→  total_checks: number;
+  1560→  healthy_checks: number;
+  1561→  unhealthy_checks: number;
+  1562→  uptime_rate: number; // 0-100
+  1563→  avg_latency_ms: number | null;
+  1564→  last_check_at: string | null;
+  1565→  last_status: string | null;
+  1566→  history: HealthCheckHistoryPoint[];
+  1567→}
+  1568→
+  1569→export async function getEndpointUptimeStats(
+  1570→  workspaceId: string,
+  1571→  endpointId: string,
+  1572→  historyLimit = 50
+  1573→): Promise<EndpointUptimeStats | null> {
+  1574→  // Verify ownership
+  1575→  const ep = await db.webhookEndpoint.findFirst({
+  1576→    where: { id: endpointId, workspaceId },
+  1577→    select: { id: true, lastTriggeredAt: true, lastStatus: true },
+  1578→  });
+  1579→  if (!ep) return null;
+  1580→
+  1581→  const checks = await db.endpointHealthCheck.findMany({
+  1582→    where: { webhookEndpointId: endpointId, workspaceId },
+  1583→    orderBy: { checkedAt: 'desc' },
+  1584→    take: 1000, // Pull last 1000 for stats
+  1585→  });
+  1586→
+  1587→  const total = checks.length;
+  1588→  const healthy = checks.filter((c) => c.status === 'healthy').length;
+  1589→  const unhealthy = total - healthy;
+  1590→  const uptimeRate = total > 0 ? Math.round((healthy / total) * 100) : 0;
+  1591→  const latencies = checks
+  1592→    .filter((c) => c.durationMs != null)
+  1593→    .map((c) => c.durationMs!);
+  1594→  const avgLatency =
+  1595→    latencies.length > 0 ? Math.round(latencies.reduce((s, n) => s + n, 0) / latencies.length) : null;
+  1596→
+  1597→  // Take the most recent N for the history chart
+  1598→  const history = checks.slice(0, historyLimit).reverse().map((c) => ({
+  1599→    id: c.id,
+  1600→    endpoint_id: c.webhookEndpointId,
+  1601→    status: c.status,
+  1602→    status_code: c.statusCode,
+  1603→    duration_ms: c.durationMs,
+  1604→    error: c.error,
+  1605→    triggered_by: c.triggeredBy,
+  1606→    checked_at: c.checkedAt.toISOString(),
+  1607→  }));
+  1608→
+  1609→  return {
+  1610→    endpoint_id: endpointId,
+  1611→    total_checks: total,
+  1612→    healthy_checks: healthy,
+  1613→    unhealthy_checks: unhealthy,
+  1614→    uptime_rate: uptimeRate,
+  1615→    avg_latency_ms: avgLatency,
+  1616→    last_check_at: ep.lastTriggeredAt?.toISOString() ?? null,
+  1617→    last_status: ep.lastStatus,
+  1618→    history,
+  1619→  };
+  1620→}
+  1621→
+  1622→export async function getAllEndpointUptimeStats(
+  1623→  workspaceId: string,
+  1624→  historyLimit = 50
+  1625→): Promise<EndpointUptimeStats[]> {
+  1626→  const endpoints = await db.webhookEndpoint.findMany({
+  1627→    where: { workspaceId },
+  1628→    select: { id: true },
+  1629→  });
+  1630→
+  1631→  const stats: EndpointUptimeStats[] = [];
+  1632→  for (const ep of endpoints) {
+  1633→    const s = await getEndpointUptimeStats(workspaceId, ep.id, historyLimit);
+  1634→    if (s) stats.push(s);
+  1635→  }
+  1636→  return stats;
+  1637→}
+  1638→
+  1639→// ─── SLA Status per endpoint ─────────────────────────────────
+  1640→
+  1641→export interface EndpointSlaStatus {
+  1642→  endpoint_id: string;
+  1643→  endpoint_label: string;
+  1644→  endpoint_url: string;
+  1645→  is_active: boolean;
+  1646→  uptime_rate: number; // 0-100 over last 10 checks
+  1647→  healthy_checks: number;
+  1648→  total_checks: number;
+  1649→  breached: boolean; // uptime_rate < threshold
+  1650→  threshold: number; // effective threshold (override ?? workspace)
+  1651→  has_threshold_override: boolean; // true if endpoint has its own threshold
+  1652→  last_check_at: string | null;
+  1653→  last_status: string | null;
+  1654→}
+  1655→
+  1656→const SLA_WINDOW = 10;
+  1657→const DEFAULT_SLA_THRESHOLD = 90;
+  1658→
+  1659→export async function getEndpointSlaStatuses(workspaceId: string): Promise<EndpointSlaStatus[]> {
+  1660→  // Fetch the workspace's configured SLA threshold
+  1661→  const ws = await db.workspace.findUnique({
+  1662→    where: { id: workspaceId },
+  1663→    select: { slaThreshold: true },
+  1664→  });
+  1665→  const workspaceThreshold = ws?.slaThreshold ?? DEFAULT_SLA_THRESHOLD;
+  1666→
+  1667→  const endpoints = await db.webhookEndpoint.findMany({
+  1668→    where: { workspaceId },
+  1669→    select: {
+  1670→      id: true,
+  1671→      label: true,
+  1672→      url: true,
+  1673→      isActive: true,
+  1674→      lastTriggeredAt: true,
+  1675→      lastStatus: true,
+  1676→      slaThresholdOverride: true,
+  1677→    },
+  1678→  });
+  1679→
+  1680→  const results: EndpointSlaStatus[] = [];
+  1681→  for (const ep of endpoints) {
+  1682→    // Per-endpoint override ?? workspace default
+  1683→    const threshold = ep.slaThresholdOverride ?? workspaceThreshold;
+  1684→    const hasOverride = ep.slaThresholdOverride != null;
+  1685→
+  1686→    const checks = await db.endpointHealthCheck.findMany({
+  1687→      where: { webhookEndpointId: ep.id },
+  1688→      orderBy: { checkedAt: 'desc' },
+  1689→      take: SLA_WINDOW,
+  1690→      select: { status: true },
+  1691→    });
+  1692→
+  1693→    const total = checks.length;
+  1694→    const healthy = checks.filter((c) => c.status === 'healthy').length;
+  1695→    const uptimeRate = total > 0 ? Math.round((healthy / total) * 100) : 100;
+  1696→    // Only flag as breached if we have at least 3 checks (need enough data)
+  1697→    const breached = total >= 3 && uptimeRate < threshold;
+  1698→
+  1699→    results.push({
+  1700→      endpoint_id: ep.id,
+  1701→      endpoint_label: ep.label,
+  1702→      endpoint_url: ep.url,
+  1703→      is_active: ep.isActive,
+  1704→      uptime_rate: uptimeRate,
+  1705→      healthy_checks: healthy,
+  1706→      total_checks: total,
+  1707→      breached,
+  1708→      threshold,
+  1709→      has_threshold_override: hasOverride,
+  1710→      last_check_at: ep.lastTriggeredAt?.toISOString() ?? null,
+  1711→      last_status: ep.lastStatus,
+  1712→    });
+  1713→  }
+  1714→  return results;
+  1715→}
+  1716→

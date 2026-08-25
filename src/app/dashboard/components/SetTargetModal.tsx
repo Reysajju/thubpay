@@ -3,6 +3,7 @@
 import { useRef, useTransition, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { setMonthlyTarget } from '../actions';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 interface Props {
   open: boolean;
@@ -12,8 +13,11 @@ interface Props {
 
 export default function SetTargetModal({ open, onClose, currentValue = 0 }: Props) {
   const formRef = useRef<HTMLFormElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
   const [isPending, startTransition] = useTransition();
   const [targetUsd, setTargetUsd] = useState(String((currentValue / 100).toFixed(2)));
+
+  useFocusTrap(modalRef, open);
 
   if (!open) return null;
 
@@ -29,7 +33,7 @@ export default function SetTargetModal({ open, onClose, currentValue = 0 }: Prop
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-sm bg-thubpay-surface rounded-2xl shadow-2xl border border-thubpay-border overflow-hidden animate-slideUp">
+      <div ref={modalRef} className="relative z-10 w-full max-w-sm bg-thubpay-surface rounded-2xl shadow-2xl border border-thubpay-border overflow-hidden animate-slideUp">
         <div className="px-6 py-5 border-b border-thubpay-border bg-thubpay-elevated">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold text-white">Set Monthly Target</h2>

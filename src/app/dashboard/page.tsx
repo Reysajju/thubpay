@@ -12,7 +12,8 @@ import DashboardActions from './components/DashboardActions';
 import DashboardOverviewCharts from './components/DashboardOverviewCharts';
 import ManualPaidButton from './components/ManualPaidButton';
 import MonthlyTargetWidget from './components/MonthlyTargetWidget';
-import { DollarSign, Clock, CheckCircle2, Users, TrendingUp, ArrowUpRight, FileText, Eye, MailCheck } from 'lucide-react';
+import RecentActivityTimeline from './components/RecentActivityTimeline';
+import { DollarSign, Clock, CheckCircle2, Users, TrendingUp, ArrowUpRight, FileText, Eye, MailCheck, Inbox, Plus } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -91,42 +92,52 @@ export default async function DashboardPage() {
     {
       label: 'Total Revenue',
       value: toUsd(stats.totalRevenue),
-      subtext: '+12.5% from last month',
+      subtext: stats.revenueChangePct === 0
+        ? 'No change vs last month'
+        : `${stats.revenueChangePct > 0 ? '+' : ''}${stats.revenueChangePct}% from last month`,
+      trendChip: stats.revenueChangeAbs !== 0
+        ? `${stats.revenueChangeAbs > 0 ? '+' : ''}${toUsd(stats.revenueChangeAbs)}`
+        : null,
       icon: DollarSign,
-      iconBg: 'bg-green-500/10',
-      iconColor: 'text-green-400',
+      iconBg: 'bg-emerald-500/10',
+      iconColor: 'text-emerald-400',
       valueColor: 'text-white',
-      trend: 'up' as const,
+      trend: (stats.revenueChangePct > 0 ? 'up' : stats.revenueChangePct < 0 ? 'down' : 'neutral') as 'up' | 'down' | 'neutral',
     },
     {
       label: 'Pending',
       value: toUsd(stats.pendingAmount),
       subtext: `${pendingCount} invoices`,
+      trendChip: stats.overdueAmount > 0 ? `${toUsd(stats.overdueAmount)} overdue` : null,
       icon: Clock,
       iconBg: 'bg-amber-500/10',
-      iconColor: 'text-[#10B981]',
-      valueColor: 'text-[#10B981]',
+      iconColor: 'text-amber-400',
+      valueColor: 'text-amber-400',
       trend: 'neutral' as const,
     },
     {
       label: 'Success Rate',
       value: `${stats.successRate}%`,
       subtext: `${stats.paidCount} of ${stats.totalCount} invoices`,
+      trendChip: null,
       icon: CheckCircle2,
-      iconBg: 'bg-green-500/10',
-      iconColor: 'text-green-400',
-      valueColor: 'text-green-400',
-      trend: stats.successRate >= 80 ? ('up' as const) : ('down' as const),
+      iconBg: 'bg-emerald-500/10',
+      iconColor: 'text-emerald-400',
+      valueColor: 'text-emerald-400',
+      trend: (stats.successRate >= 80 ? 'up' : stats.successRate >= 50 ? 'neutral' : 'down') as 'up' | 'down' | 'neutral',
     },
     {
       label: 'Active Clients',
       value: String(stats.clientCount),
       subtext: `${stats.activeGateways} gateways connected`,
+      trendChip: stats.newClientsThisMonth > 0
+        ? `+${stats.newClientsThisMonth} this month`
+        : null,
       icon: Users,
-      iconBg: 'bg-blue-500/10',
-      iconColor: 'text-blue-400',
+      iconBg: 'bg-cyan-500/10',
+      iconColor: 'text-cyan-400',
       valueColor: 'text-white',
-      trend: 'up' as const,
+      trend: (stats.newClientsThisMonth > 0 ? 'up' : 'neutral') as 'up' | 'down' | 'neutral',
     },
   ];
 
@@ -154,30 +165,57 @@ export default async function DashboardPage() {
 
         {/* Stats Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-8">
-          {statCards.map((card, i) => (
-            <div
-              key={card.label}
-              className={`glass-card glass-card-hover stat-card-hover glass-card-press rounded-2xl p-4 sm:p-5 animate-stagger stagger-${i + 1}`}
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className={`flex items-center justify-center w-9 h-9 rounded-xl ${card.iconBg}`}>
-                  <card.icon className={`w-4 h-4 ${card.iconColor}`} />
+          {statCards.map((card, i) => {
+            const isUp = card.trend === 'up';
+            const isDown = card.trend === 'down';
+            const trendColor = isUp
+              ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+              : isDown
+                ? 'text-red-400 bg-red-500/10 border-red-500/20'
+                : 'text-zinc-400 bg-zinc-500/10 border-zinc-500/20';
+            return (
+              <div
+                key={card.label}
+                className={`glass-card glass-card-hover stat-card-hover glass-card-press rounded-2xl p-4 sm:p-5 animate-stagger stagger-${i + 1} relative overflow-hidden`}
+              >
+                {/* Decorative gradient blob in the corner */}
+                <div
+                  className={`pointer-events-none absolute -top-6 -right-6 w-20 h-20 rounded-full blur-2xl opacity-20 ${card.iconBg}`}
+                />
+                <div className="flex items-start justify-between mb-3 relative">
+                  <div className={`flex items-center justify-center w-9 h-9 rounded-xl ${card.iconBg} border border-white/5`}>
+                    <card.icon className={`w-4 h-4 ${card.iconColor}`} />
+                  </div>
+                  {(isUp || isDown) && (
+                    <span
+                      className={`flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-md border ${trendColor}`}
+                      title={`Trend: ${card.trend}`}
+                    >
+                      {isUp ? (
+                        <TrendingUp className="w-3 h-3" />
+                      ) : (
+                        <ArrowUpRight className="w-3 h-3 rotate-90" />
+                      )}
+                    </span>
+                  )}
                 </div>
-                {card.trend === 'up' && (
-                  <span className="flex items-center gap-0.5 text-[10px] font-bold text-green-400">
-                    <TrendingUp className="w-3 h-3" />
-                  </span>
+                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
+                  {card.label}
+                </p>
+                <p className={`text-xl sm:text-2xl font-black ${card.valueColor} animate-count tabular-nums`}>
+                  {card.value}
+                </p>
+                <p className="text-[11px] text-zinc-500 mt-1 truncate">{card.subtext}</p>
+                {card.trendChip && (
+                  <p
+                    className={`mt-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold border ${trendColor}`}
+                  >
+                    {card.trendChip}
+                  </p>
                 )}
               </div>
-              <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
-                {card.label}
-              </p>
-              <p className={`text-xl sm:text-2xl font-black ${card.valueColor} animate-count tabular-nums`}>
-                {card.value}
-              </p>
-              <p className="text-[11px] text-zinc-500 mt-1 truncate">{card.subtext}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Charts + Target */}
@@ -195,101 +233,120 @@ export default async function DashboardPage() {
           />
         </div>
 
-        {/* Recent Invoices */}
-        <div className="glass-card rounded-3xl p-4 sm:p-6 animate-fadeIn">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-2.5">
-              <FileText className="w-4 h-4 text-[#10B981]" />
-              <h2 className="text-lg font-bold text-white">Recent Invoices</h2>
-              <span className="text-[10px] font-bold text-zinc-500 bg-zinc-800/50 px-2 py-0.5 rounded-full border border-[#252529]">
-                {recentInvoices.length}
-              </span>
+        {/* Recent Invoices + Activity Timeline */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 animate-fadeIn">
+          <div className="lg:col-span-2 glass-card rounded-3xl p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-2.5">
+                <FileText className="w-4 h-4 text-[#10B981]" />
+                <h2 className="text-lg font-bold text-white">Recent Invoices</h2>
+                <span className="text-[10px] font-bold text-zinc-500 bg-zinc-800/50 px-2 py-0.5 rounded-full border border-[#252529]">
+                  {recentInvoices.length}
+                </span>
+              </div>
+              <Link
+                href="/dashboard/transactions"
+                className="flex items-center gap-1 text-xs text-[#10B981] hover:text-[#34D399] transition-colors group"
+              >
+                View all
+                <ArrowUpRight className="w-3 h-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+              </Link>
             </div>
-            <Link
-              href="/dashboard/transactions"
-              className="flex items-center gap-1 text-xs text-[#10B981] hover:text-[#34D399] transition-colors group"
-            >
-              View all
-              <ArrowUpRight className="w-3 h-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-            </Link>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[600px] text-left text-sm whitespace-nowrap">
-              <thead>
-                <tr className="text-zinc-500 border-b border-[#252529]/60">
-                  <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider">Invoice</th>
-                  <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider">Client</th>
-                  <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider text-right">Amount</th>
-                  <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider text-center">Status</th>
-                  <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#252529]/30">
-                {recentInvoices.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="py-12 text-center">
-                      <FileText className="w-8 h-8 text-zinc-700 mx-auto mb-2" />
-                      <p className="text-sm text-zinc-500">No invoices yet</p>
-                      <p className="text-xs text-zinc-600 mt-1">
-                        Create your first invoice to get started
-                      </p>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[600px] text-left text-sm whitespace-nowrap">
+                <thead>
+                  <tr className="text-zinc-500 border-b border-[#252529]/60">
+                    <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider">Invoice</th>
+                    <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider">Client</th>
+                    <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider text-right">Amount</th>
+                    <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider text-center">Status</th>
+                    <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider">Actions</th>
                   </tr>
-                ) : (
-                  recentInvoices.map((inv, i) => (
-                    <tr
-                      key={inv.id}
-                      className={`hover:bg-white/5 transition-colors group animate-stagger stagger-${Math.min(i + 1, 6)}`}
-                    >
-                      <td className="py-3">
-                        <a
-                          href={`/invoice/${inv.id}`}
-                          className="font-mono text-[#10B981] text-xs hover:text-[#34D399] transition-colors"
-                        >
-                          {inv.invoice_number || inv.id?.slice(0, 8)}
-                        </a>
-                      </td>
-                      <td className="py-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full bg-[#10B981]/15 flex items-center justify-center text-[#10B981] font-bold text-[10px]">
-                            {(inv.clients?.name || inv.clients?.email || 'U')[0].toUpperCase()}
+                </thead>
+                <tbody className="divide-y divide-[#252529]/30">
+                  {recentInvoices.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-14 text-center">
+                        <div className="flex flex-col items-center gap-3">
+                          <div className="w-12 h-12 rounded-2xl bg-[#10B981]/10 border border-[#10B981]/20 flex items-center justify-center">
+                            <Inbox className="w-5 h-5 text-[#10B981]" />
                           </div>
                           <div>
-                            <p className="text-zinc-200 text-sm font-medium">
-                              {inv.clients?.name || 'Unknown'}
+                            <p className="text-sm font-semibold text-zinc-300">No invoices yet</p>
+                            <p className="text-xs text-zinc-600 mt-1">
+                              Your recent invoices will appear here once created.
                             </p>
-                            {inv.clients?.email && (
-                              <p className="text-zinc-600 text-[10px]">{inv.clients.email}</p>
-                            )}
                           </div>
-                        </div>
-                      </td>
-                      <td className="py-3 text-right font-semibold text-white text-sm">
-                        {toUsd(inv.total_cents)}
-                      </td>
-                      <td className="py-3 text-center">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${STATUS_STYLES[inv.status] || STATUS_STYLES.draft}`}
-                        >
-                          {inv.status}
-                        </span>
-                      </td>
-                      <td className="py-3">
-                        <div className="flex items-center gap-2">
-                          <a
-                            href={`/invoice/${inv.id}`}
-                            className="text-xs text-zinc-400 hover:text-[#10B981] transition-colors"
+                          <Link
+                            href="/dashboard/settings/gateways"
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-[#2e2e33] bg-[#18181c] hover:border-[#3e3e44] hover:bg-[#1d1d22] text-zinc-200 text-xs font-semibold transition-colors"
                           >
-                            View
-                          </a>
-                          <ManualPaidButton invoiceId={inv.id} status={inv.status} />
+                            <Plus className="w-3.5 h-3.5 text-[#10B981]" />
+                            Connect a gateway to get started
+                          </Link>
                         </div>
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    recentInvoices.map((inv, i) => (
+                      <tr
+                        key={inv.id}
+                        className={`hover:bg-white/5 transition-colors group animate-stagger stagger-${Math.min(i + 1, 6)}`}
+                      >
+                        <td className="py-3">
+                          <a
+                            href={`/invoice/${inv.id}`}
+                            className="font-mono text-[#10B981] text-xs hover:text-[#34D399] transition-colors"
+                          >
+                            {inv.invoice_number || inv.id?.slice(0, 8)}
+                          </a>
+                        </td>
+                        <td className="py-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-full bg-[#10B981]/15 flex items-center justify-center text-[#10B981] font-bold text-[10px]">
+                              {(inv.clients?.name || inv.clients?.email || 'U')[0].toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="text-zinc-200 text-sm font-medium">
+                                {inv.clients?.name || 'Unknown'}
+                              </p>
+                              {inv.clients?.email && (
+                                <p className="text-zinc-600 text-[10px]">{inv.clients.email}</p>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 text-right font-semibold text-white text-sm">
+                          {toUsd(inv.total_cents)}
+                        </td>
+                        <td className="py-3 text-center">
+                          <span
+                            className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${STATUS_STYLES[inv.status] || STATUS_STYLES.draft}`}
+                          >
+                            {inv.status}
+                          </span>
+                        </td>
+                        <td className="py-3">
+                          <div className="flex items-center gap-2">
+                            <a
+                              href={`/invoice/${inv.id}`}
+                              className="text-xs text-zinc-400 hover:text-[#10B981] transition-colors"
+                            >
+                              View
+                            </a>
+                            <ManualPaidButton invoiceId={inv.id} status={inv.status} />
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="lg:col-span-1">
+            <RecentActivityTimeline />
           </div>
         </div>
 

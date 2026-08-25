@@ -18,6 +18,7 @@ import {
   PauseCircle,
   Inbox,
 } from 'lucide-react';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 
 interface AutomationRule {
   id: string;
@@ -87,6 +88,8 @@ export default function AutomationClient({ workspaceId }: Props) {
   const [localStatus, setLocalStatus] = useState<Record<string, string>>({});
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [pendingDeleteRule, setPendingDeleteRule] = useState<string | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   // Form State
   const [ruleName, setRuleName] = useState('');
@@ -132,8 +135,14 @@ export default function AutomationClient({ workspaceId }: Props) {
     }
   };
 
-  const deleteRule = async (ruleId: string) => {
-    if (!confirm('Are you sure you want to delete this automation rule?')) return;
+  const requestDeleteRule = (ruleId: string) => {
+    setPendingDeleteRule(ruleId);
+  };
+
+  const handleConfirmDeleteRule = async () => {
+    if (!pendingDeleteRule) return;
+    const ruleId = pendingDeleteRule;
+    setDeleteBusy(true);
     try {
       await fetch(`/api/dashboard/automation/rules?id=${ruleId}`, {
         method: 'DELETE',
@@ -141,6 +150,9 @@ export default function AutomationClient({ workspaceId }: Props) {
       setRules((prev) => (prev ? prev.filter((r) => r.id !== ruleId) : []));
     } catch (err) {
       console.error('Failed to delete rule:', err);
+    } finally {
+      setDeleteBusy(false);
+      setPendingDeleteRule(null);
     }
   };
 
@@ -421,7 +433,7 @@ export default function AutomationClient({ workspaceId }: Props) {
 
                       <button
                         type="button"
-                        onClick={() => deleteRule(rule.id)}
+                        onClick={() => requestDeleteRule(rule.id)}
                         aria-label="Delete rule"
                         title="Delete rule"
                         className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all cursor-pointer"
@@ -566,6 +578,20 @@ export default function AutomationClient({ workspaceId }: Props) {
             </div>
           </div>
         )}
+
+        <ConfirmDialog
+          open={pendingDeleteRule !== null}
+          onOpenChange={(open) => {
+            if (!open) setPendingDeleteRule(null);
+          }}
+          title="Delete automation rule?"
+          description="Are you sure you want to delete this automation rule? This action cannot be undone."
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          variant="destructive"
+          loading={deleteBusy}
+          onConfirm={handleConfirmDeleteRule}
+        />
       </div>
     </section>
   );

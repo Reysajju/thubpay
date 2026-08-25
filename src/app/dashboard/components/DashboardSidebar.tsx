@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import Logo from '@/components/icons/Logo';
-import { NotificationsBell, CommandPalette, SearchTrigger } from './NotificationsBell';
+import { NotificationsBell, SearchTrigger } from './NotificationsBell';
 import { OnboardingIndicator } from './OnboardingWalkthrough';
 import ThemeToggle from './ThemeToggle';
 
@@ -204,8 +204,6 @@ export default function DashboardSidebar({
           </div>
         </div>
       </div>
-
-      <CommandPalette />
     </aside>
   );
 }

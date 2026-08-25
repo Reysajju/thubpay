@@ -4,6 +4,8 @@ import { redirect } from 'next/navigation';
 import { getSessionUserId } from '@/lib/session';
 import DashboardSidebar from './components/DashboardSidebar';
 import MobileTopBar from './components/MobileTopBar';
+import CommandPaletteHost from './components/CommandPaletteHost';
+import HelpHost from './components/HelpHost';
 import { OnboardingWalkthrough } from './components/OnboardingWalkthrough';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -54,6 +56,16 @@ export default async function DashboardLayout({ children }: { children: React.Re
         workspaceId={membership.workspaceId}
         workspaceName={membership.workspace.name}
       />
+
+      {/* Single global mount for the Cmd+K command palette.
+          Previously mounted in both DashboardSidebar and MobileTopBar,
+          which caused duplicate overlays + autofocus races. */}
+      <CommandPaletteHost />
+
+      {/* Floating Help button + keyboard shortcuts overlay + g-prefix / n-prefix
+          keyboard navigation. Single mount at layout root so the global
+          keydown listener is bound exactly once. */}
+      <HelpHost />
     </div>
   );
 }

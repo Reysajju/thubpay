@@ -14,6 +14,7 @@ import {
   CreditCard,
   AlertTriangle
 } from 'lucide-react';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -61,6 +62,8 @@ export default function GatewaySettings({ initialGateways }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; label: string } | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
 
   // Form state
   const [formLabel, setFormLabel] = useState('');
@@ -133,9 +136,14 @@ export default function GatewaySettings({ initialGateways }: Props) {
   };
 
   // ── Delete gateway ─────────────────────────────────────────────
-  const handleDelete = async (id: string, label: string) => {
-    if (!confirm(`Are you sure you want to disconnect "${label}"? This cannot be undone.`)) return;
+  const requestDelete = (id: string, label: string) => {
+    setPendingDelete({ id, label });
+  };
 
+  const handleConfirmDelete = async () => {
+    if (!pendingDelete) return;
+    const { id, label } = pendingDelete;
+    setConfirmBusy(true);
     setDeleting(id);
     try {
       const res = await fetch(`/api/dashboard/settings/gateways/${id}`, { method: 'DELETE' });
@@ -151,6 +159,8 @@ export default function GatewaySettings({ initialGateways }: Props) {
       setMessage({ type: 'error', text: err.message || 'Network error' });
     } finally {
       setDeleting(null);
+      setConfirmBusy(false);
+      setPendingDelete(null);
     }
   };
 
@@ -292,7 +302,7 @@ export default function GatewaySettings({ initialGateways }: Props) {
                       </div>
                     </div>
                     <button
-                      onClick={() => handleDelete(gateway.id, gateway.label)}
+                      onClick={() => requestDelete(gateway.id, gateway.label)}
                       disabled={deleting === gateway.id}
                       className="p-2 text-zinc-400 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors shrink-0"
                       title="Delete gateway"
@@ -459,6 +469,24 @@ export default function GatewaySettings({ initialGateways }: Props) {
             </div>
           </div>
         )}
+
+        <ConfirmDialog
+          open={pendingDelete !== null}
+          onOpenChange={(open) => {
+            if (!open) setPendingDelete(null);
+          }}
+          title="Disconnect gateway?"
+          description={
+            pendingDelete
+              ? `Are you sure you want to disconnect "${pendingDelete.label}"? This cannot be undone.`
+              : undefined
+          }
+          confirmLabel="Disconnect"
+          cancelLabel="Cancel"
+          variant="destructive"
+          loading={confirmBusy}
+          onConfirm={handleConfirmDelete}
+        />
       </div>
     </div>
   );

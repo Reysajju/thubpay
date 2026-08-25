@@ -32,6 +32,7 @@ import {
   Shield,
   Bell,
 } from 'lucide-react';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 
 interface GatewayCredential {
   id: string;
@@ -107,6 +108,8 @@ export default function SettingsClient({ workspace, gateways: initialGateways }:
   const [gateways, setGateways] = useState<GatewayCredential[]>(initialGateways);
   const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
   const [toggleLoading, setToggleLoading] = useState<string | null>(null);
+  const [pendingDeleteGw, setPendingDeleteGw] = useState<{ id: string; labelText: string } | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   // ── Gateway form state ────────────────────────────────────────
   const [gatewaySlug, setGatewaySlug] = useState('stripe');
@@ -188,8 +191,14 @@ export default function SettingsClient({ workspace, gateways: initialGateways }:
   };
 
   // ── Handle delete gateway ─────────────────────────────────────
-  const handleDeleteGateway = async (id: string, labelText: string) => {
-    if (!confirm(`Are you sure you want to disconnect "${labelText}"? This action cannot be undone.`)) return;
+  const handleDeleteGateway = (id: string, labelText: string) => {
+    setPendingDeleteGw({ id, labelText });
+  };
+
+  const handleConfirmDeleteGateway = async () => {
+    if (!pendingDeleteGw) return;
+    const { id } = pendingDeleteGw;
+    setDeleteBusy(true);
     setDeleteLoading(id);
     try {
       const res = await deleteGatewayCredential(id);
@@ -202,6 +211,8 @@ export default function SettingsClient({ workspace, gateways: initialGateways }:
       alert(`Error: ${err.message}`);
     } finally {
       setDeleteLoading(null);
+      setDeleteBusy(false);
+      setPendingDeleteGw(null);
     }
   };
 
@@ -734,6 +745,24 @@ export default function SettingsClient({ workspace, gateways: initialGateways }:
         {activeTab === 'notifications' && (
           <NotificationsTab workspaceId={workspace.id} />
         )}
+
+        <ConfirmDialog
+          open={pendingDeleteGw !== null}
+          onOpenChange={(open) => {
+            if (!open) setPendingDeleteGw(null);
+          }}
+          title="Disconnect gateway?"
+          description={
+            pendingDeleteGw
+              ? `Are you sure you want to disconnect "${pendingDeleteGw.labelText}"? This action cannot be undone.`
+              : undefined
+          }
+          confirmLabel="Disconnect"
+          cancelLabel="Cancel"
+          variant="destructive"
+          loading={deleteBusy}
+          onConfirm={handleConfirmDeleteGateway}
+        />
       </div>
     </section>
   );

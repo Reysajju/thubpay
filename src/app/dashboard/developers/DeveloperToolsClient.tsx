@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import WebhookDeliverySparkline from '../components/WebhookDeliverySparkline';
 import UptimeHistoryChart from '../components/UptimeHistoryChart';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 
 interface ApiKey {
   id: string;
@@ -217,6 +218,34 @@ export default function DeveloperToolsClient({ apiKeys, webhookEvents, gateways,
   const [selectedEndpointIds, setSelectedEndpointIds] = useState<Set<string>>(new Set());
   const [bulkActionPending, setBulkActionPending] = useState(false);
   const [bulkActionMessage, setBulkActionMessage] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [confirmConfig, setConfirmConfig] = useState<{
+    title: string;
+    description?: string;
+    confirmLabel?: string;
+    onConfirm: () => Promise<void>;
+  }>({ title: '', onConfirm: async () => {} });
+
+  const requestConfirm = (cfg: {
+    title: string;
+    description?: string;
+    confirmLabel?: string;
+    onConfirm: () => Promise<void>;
+  }) => {
+    setConfirmConfig(cfg);
+    setConfirmOpen(true);
+  };
+
+  const handleConfirmDialog = async () => {
+    setConfirmBusy(true);
+    try {
+      await confirmConfig.onConfirm();
+    } finally {
+      setConfirmBusy(false);
+      setConfirmOpen(false);
+    }
+  };
 
   const copyToClipboard = (id: string, text: string) => {
     navigator.clipboard.writeText(text);
@@ -289,24 +318,42 @@ export default function DeveloperToolsClient({ apiKeys, webhookEvents, gateways,
     if (ids.length === 0) return;
 
     if (action === 'delete') {
-      if (!confirm(`Delete ${ids.length} endpoint${ids.length === 1 ? '' : 's'}? This cannot be undone.`)) {
-        return;
-      }
+      requestConfirm({
+        title: `Delete ${ids.length} endpoint${ids.length === 1 ? '' : 's'}?`,
+        description: 'This cannot be undone.',
+        confirmLabel: 'Delete',
+        onConfirm: async () => {
+          setBulkActionPending(true);
+          setBulkActionMessage(null);
+          try {
+            const { bulkDeleteWebhookEndpoints } = await import('@/app/dashboard/actions');
+            const res: any = await bulkDeleteWebhookEndpoints(ids);
+            if (res?.success) {
+              setBulkActionMessage(`Successfully deleted ${res.deleted ?? ids.length} endpoint${ids.length === 1 ? '' : 's'}.`);
+              clearSelection();
+              // Reload after a short delay to show the message
+              setTimeout(() => window.location.reload(), 1500);
+            } else {
+              setBulkActionMessage(res?.error || 'Bulk action failed');
+            }
+          } catch (err: any) {
+            setBulkActionMessage(err?.message || 'Unexpected error');
+          } finally {
+            setBulkActionPending(false);
+          }
+        },
+      });
+      return;
     }
 
     setBulkActionPending(true);
     setBulkActionMessage(null);
     try {
-      const { bulkToggleWebhookEndpoints, bulkDeleteWebhookEndpoints } = await import('@/app/dashboard/actions');
-      let res: any;
-      if (action === 'delete') {
-        res = await bulkDeleteWebhookEndpoints(ids);
-      } else {
-        res = await bulkToggleWebhookEndpoints(ids, action === 'resume');
-      }
+      const { bulkToggleWebhookEndpoints } = await import('@/app/dashboard/actions');
+      const res: any = await bulkToggleWebhookEndpoints(ids, action === 'resume');
       if (res?.success) {
-        const verb = action === 'pause' ? 'paused' : action === 'resume' ? 'resumed' : 'deleted';
-        setBulkActionMessage(`Successfully ${verb} ${res.updated ?? res.deleted ?? ids.length} endpoint${ids.length === 1 ? '' : 's'}.`);
+        const verb = action === 'pause' ? 'paused' : 'resumed';
+        setBulkActionMessage(`Successfully ${verb} ${res.updated ?? ids.length} endpoint${ids.length === 1 ? '' : 's'}.`);
         clearSelection();
         // Reload after a short delay to show the message
         setTimeout(() => window.location.reload(), 1500);
@@ -1031,15 +1078,21 @@ export default function DeveloperToolsClient({ apiKeys, webhookEvents, gateways,
                             <Download className="w-2.5 h-2.5" />
                           </a>
                           <button
-                            onClick={async () => {
-                              if (!confirm(`Delete endpoint "${ep.label}"?`)) return;
-                              setDeletingEndpoint(ep.id);
-                              try {
-                                const { deleteWebhookEndpoint } = await import('@/app/dashboard/actions');
-                                await deleteWebhookEndpoint(ep.id);
-                              } finally {
-                                setDeletingEndpoint(null);
-                              }
+                            onClick={() => {
+                              requestConfirm({
+                                title: `Delete endpoint "${ep.label}"?`,
+                                description: 'This cannot be undone.',
+                                confirmLabel: 'Delete',
+                                onConfirm: async () => {
+                                  setDeletingEndpoint(ep.id);
+                                  try {
+                                    const { deleteWebhookEndpoint } = await import('@/app/dashboard/actions');
+                                    await deleteWebhookEndpoint(ep.id);
+                                  } finally {
+                                    setDeletingEndpoint(null);
+                                  }
+                                },
+                              });
                             }}
                             disabled={deletingEndpoint === ep.id}
                             className="px-2 py-1 rounded-md text-[10px] font-bold text-red-400 border border-red-500/30 hover:bg-red-500/10 transition disabled:opacity-50 flex items-center justify-center gap-1"
@@ -1360,6 +1413,18 @@ export default function DeveloperToolsClient({ apiKeys, webhookEvents, gateways,
             </div>
           </div>
         </div>
+
+        <ConfirmDialog
+          open={confirmOpen}
+          onOpenChange={setConfirmOpen}
+          title={confirmConfig.title}
+          description={confirmConfig.description}
+          confirmLabel={confirmConfig.confirmLabel || 'Confirm'}
+          cancelLabel="Cancel"
+          variant="destructive"
+          loading={confirmBusy}
+          onConfirm={handleConfirmDialog}
+        />
       </div>
     </section>
   );

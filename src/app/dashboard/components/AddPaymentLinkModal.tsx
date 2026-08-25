@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useTransition } from 'react';
+import { useRef, useState, useEffect, useTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { Link as LinkIcon, Copy, Check, ExternalLink, Loader2, ArrowRight } from 'lucide-react';
 import { createPaymentLinkQuick } from '../actions';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 interface Client {
   id: string;
@@ -26,11 +27,14 @@ export default function AddPaymentLinkModal({ open, onClose, clients }: Props) {
   const [amount, setAmount] = useState('');
   const [title, setTitle] = useState('');
   const [selectedClient, setSelectedClient] = useState('');
+  const modalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
+
+  useFocusTrap(modalRef, open && mounted);
 
   if (!open || !mounted) return null;
 
@@ -65,7 +69,7 @@ export default function AddPaymentLinkModal({ open, onClose, clients }: Props) {
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/75 backdrop-blur-md" onClick={handleReset} />
 
-      <div className="relative z-10 w-full max-w-lg bg-[#111114] rounded-2xl shadow-2xl border border-[#2e2e34] overflow-hidden animate-slideUp">
+      <div ref={modalRef} className="relative z-10 w-full max-w-lg bg-[#111114] rounded-2xl shadow-2xl border border-[#2e2e34] overflow-hidden animate-slideUp">
         {/* Header */}
         <div className="px-6 py-5 bg-gradient-to-r from-emerald-600 to-teal-500 text-white">
           <div className="flex items-center justify-between">

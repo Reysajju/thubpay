@@ -42,6 +42,21 @@ const SUB_COLORS: Record<string, string> = {
   'paused': '#a78bfa',
 };
 
+const usdFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+const usdAxisFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  maximumFractionDigits: 0,
+});
+const formatUsd = (value: number): string => usdFormatter.format(Number.isFinite(value) ? value : 0);
+const formatUsdAxis = (value: number): string => usdAxisFormatter.format(Number.isFinite(value) ? value : 0);
+const formatCount = (value: number): string => (Number.isFinite(value) ? value : 0).toLocaleString('en-US');
+
 function useAnimatedValue(target: number, duration = 1200) {
   const [value, setValue] = useState(0);
   useEffect(() => {
@@ -80,9 +95,15 @@ export default function DashboardOverviewCharts({
     return () => cancelAnimationFrame(id);
   }, []);
 
-  const pieData = invoiceStats.length > 0 ? invoiceStats : [{ name: 'No data', value: 1 }];
-  const disputePie = disputeStats.length > 0 ? disputeStats : [{ name: 'No disputes', value: 1 }];
-  const subPie = subStats.length > 0 ? subStats : [{ name: 'No subscriptions', value: 1 }];
+  const isInvoiceStatsEmpty =
+    invoiceStats.length === 0 || invoiceStats.every((d) => d.value === 0);
+  const pieData = isInvoiceStatsEmpty ? [{ name: 'No data', value: 0 }] : invoiceStats;
+  const isDisputeEmpty =
+    disputeStats.length === 0 || disputeStats.every((d) => d.value === 0);
+  const disputePie = isDisputeEmpty ? [{ name: 'No disputes', value: 0 }] : disputeStats;
+  const isSubEmpty =
+    subStats.length === 0 || subStats.every((d) => d.value === 0);
+  const subPie = isSubEmpty ? [{ name: 'No subscriptions', value: 0 }] : subStats;
   const totalNewClients = newClientsData.reduce((s, d) => s + d.count, 0);
   const totalRevenue = revenueData.reduce((s, d) => s + d.amount, 0);
 
@@ -94,7 +115,7 @@ export default function DashboardOverviewCharts({
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-bold text-white">Revenue Overview</h3>
             <span className="text-xs font-bold text-zinc-500">
-              Total: <span className="text-thubpay-gold">${totalRevenue.toFixed(2)}</span>
+              Total: <span className="text-thubpay-gold">{formatUsd(totalRevenue)}</span>
             </span>
           </div>
           <div className="h-[220px] sm:h-[280px] md:h-[300px] w-full min-h-[200px]">
@@ -108,10 +129,10 @@ export default function DashboardOverviewCharts({
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#3f3f46" />
                 <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#a1a1aa', fontSize: 12 }} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#a1a1aa', fontSize: 12 }} tickFormatter={(value) => `$${value}`} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#a1a1aa', fontSize: 12 }} tickFormatter={(value: number) => formatUsdAxis(value)} width={70} />
                 <Tooltip
                   contentStyle={{ borderRadius: '12px', border: '1px solid #3f3f46', background: '#18181b', color: '#fafafa', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.4)' }}
-                  formatter={(value: number) => [`$${Number(value).toFixed(2)}`, 'Revenue']}
+                  formatter={(value: number) => [formatUsd(value), 'Revenue']}
                 />
                 <Area type="monotone" dataKey="amount" stroke="#059669" strokeWidth={3} fillOpacity={1} fill="url(#colorAmount)" animationDuration={1500} animationEasing="ease-out" />
               </AreaChart>
@@ -138,7 +159,7 @@ export default function DashboardOverviewCharts({
               {pieData.map((stat, i) => (
                 <div key={`${stat.name}-${i}`} className="flex items-center gap-1.5 text-xs font-semibold text-zinc-400">
                   <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
-                  {stat.name} ({stat.value})
+                  {stat.name}{stat.value > 0 ? ` (${formatCount(stat.value)})` : ''}
                 </div>
               ))}
             </div>
@@ -161,7 +182,7 @@ export default function DashboardOverviewCharts({
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#3f3f46" />
                 <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#a1a1aa', fontSize: 12 }} dy={10} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: '#a1a1aa', fontSize: 12 }} allowDecimals={false} />
-                <Tooltip contentStyle={{ borderRadius: '12px', border: '1px solid #3f3f46', background: '#18181b', color: '#fafafa' }} formatter={(value: number) => [value, 'New Clients']} />
+                <Tooltip contentStyle={{ borderRadius: '12px', border: '1px solid #3f3f46', background: '#18181b', color: '#fafafa' }} formatter={(value: number) => [formatCount(value), 'New Clients']} />
                 <Bar dataKey="count" name="New Clients" radius={[6, 6, 0, 0]} maxBarSize={40} animationDuration={1500} animationEasing="ease-out">
                   {newClientsData.map((_, index) => (
                     <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
@@ -179,8 +200,8 @@ export default function DashboardOverviewCharts({
               <BarChart data={ledgerData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }} barGap={8}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#3f3f46" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#a1a1aa', fontSize: 12 }} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#a1a1aa', fontSize: 12 }} tickFormatter={(value) => `$${value}`} />
-                <Tooltip contentStyle={{ borderRadius: '12px', border: '1px solid #3f3f46', background: '#18181b', color: '#fafafa' }} formatter={(value: number) => [`$${Number(value).toFixed(2)}`, '']} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#a1a1aa', fontSize: 12 }} tickFormatter={(value: number) => formatUsdAxis(value)} width={70} />
+                <Tooltip contentStyle={{ borderRadius: '12px', border: '1px solid #3f3f46', background: '#18181b', color: '#fafafa' }} formatter={(value: number) => [formatUsd(value), '']} />
                 <Legend wrapperStyle={{ color: '#a1a1aa', fontSize: 12 }} />
                 <Bar dataKey="incoming" name="Incoming" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} animationDuration={1500} />
                 <Bar dataKey="outgoing" name="Outgoing" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={40} animationDuration={1500} />
@@ -213,7 +234,7 @@ export default function DashboardOverviewCharts({
             {disputePie.map((stat, i) => (
               <div key={stat.name} className="flex items-center gap-1.5 text-xs font-semibold text-zinc-400 capitalize">
                 <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: DISPUTE_COLORS[stat.name] || PIE_COLORS[i % PIE_COLORS.length] }} />
-                {stat.name} ({stat.value})
+                {stat.name}{stat.value > 0 ? ` (${formatCount(stat.value)})` : ''}
               </div>
             ))}
           </div>
@@ -240,7 +261,7 @@ export default function DashboardOverviewCharts({
             {subPie.map((stat, i) => (
               <div key={stat.name} className="flex items-center gap-1.5 text-xs font-semibold text-zinc-400 capitalize">
                 <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: SUB_COLORS[stat.name] || PIE_COLORS[i % PIE_COLORS.length] }} />
-                {stat.name} ({stat.value})
+                {stat.name}{stat.value > 0 ? ` (${formatCount(stat.value)})` : ''}
               </div>
             ))}
           </div>

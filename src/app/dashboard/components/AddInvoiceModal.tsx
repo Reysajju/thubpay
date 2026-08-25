@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { createInvoice } from '../actions';
 import { GatewayProps } from './DashboardActions';
 import { Loader2 } from 'lucide-react';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 interface Client {
   id: string;
@@ -30,6 +31,7 @@ interface Props {
 
 export default function AddInvoiceModal({ open, onClose, clients, brands, gateways = [] }: Props) {
   const formRef = useRef<HTMLFormElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [selectedClient, setSelectedClient] = useState('');
@@ -42,6 +44,8 @@ export default function AddInvoiceModal({ open, onClose, clients, brands, gatewa
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
+
+  useFocusTrap(modalRef, open && mounted);
 
   if (!open || !mounted) return null;
 
@@ -66,7 +70,7 @@ export default function AddInvoiceModal({ open, onClose, clients, brands, gatewa
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 overflow-y-auto">
       <div className="fixed inset-0 bg-black/75 backdrop-blur-md" onClick={onClose} />
 
-      <div className="relative z-10 w-full max-w-xl bg-[#111114] rounded-2xl shadow-2xl border border-[#2e2e34] overflow-hidden animate-slideUp my-4">
+      <div ref={modalRef} className="relative z-10 w-full max-w-xl bg-[#111114] rounded-2xl shadow-2xl border border-[#2e2e34] overflow-hidden animate-slideUp my-4">
         {/* Header */}
         <div
           className="px-6 py-5 transition-all duration-300"

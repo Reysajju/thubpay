@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { sendInvoice, markInvoicePaidManually } from '@/app/dashboard/actions';
 import { Send, CheckCircle2, Printer, Loader2, Link2, Check, Copy, CreditCard } from 'lucide-react';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import RefundModal from './RefundModal';
 import VoidButton from './VoidButton';
 
@@ -33,6 +34,8 @@ export default function InvoiceActions({
   const [marking, setMarking] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showLinkToast, setShowLinkToast] = useState(false);
+  const [markPaidConfirmOpen, setMarkPaidConfirmOpen] = useState(false);
+  const [markPaidBusy, setMarkPaidBusy] = useState(false);
 
   // Render a stable relative URL on the server and the first client render
   // to avoid hydration mismatches; compute the absolute URL after mount.
@@ -81,12 +84,21 @@ export default function InvoiceActions({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleMarkPaid = async () => {
-    if (!confirm('Mark this invoice as paid manually?')) return;
+  const handleMarkPaidRequest = () => {
+    setMarkPaidConfirmOpen(true);
+  };
+
+  const handleConfirmMarkPaid = async () => {
     setMarking(true);
-    await markInvoicePaidManually(invoiceId);
-    setMarking(false);
-    router.refresh();
+    setMarkPaidBusy(true);
+    try {
+      await markInvoicePaidManually(invoiceId);
+    } finally {
+      setMarking(false);
+      setMarkPaidBusy(false);
+      setMarkPaidConfirmOpen(false);
+      router.refresh();
+    }
   };
 
   if (printOnly) {
@@ -222,7 +234,7 @@ export default function InvoiceActions({
 
       {!['paid', 'void', 'refunded'].includes(status) && (
         <button
-          onClick={handleMarkPaid}
+          onClick={handleMarkPaidRequest}
           disabled={marking}
           className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-green-500/30 bg-green-500/10 text-sm font-semibold text-green-400 hover:bg-green-500/20 disabled:opacity-50 transition-all"
         >
@@ -256,6 +268,18 @@ export default function InvoiceActions({
         <Printer className="w-4 h-4" />
         Print / PDF
       </button>
+
+      <ConfirmDialog
+        open={markPaidConfirmOpen}
+        onOpenChange={setMarkPaidConfirmOpen}
+        title="Mark invoice as paid?"
+        description="This will mark the invoice as paid manually without charging the customer."
+        confirmLabel="Mark as Paid"
+        cancelLabel="Cancel"
+        variant="default"
+        loading={markPaidBusy}
+        onConfirm={handleConfirmMarkPaid}
+      />
     </div>
   );
 }

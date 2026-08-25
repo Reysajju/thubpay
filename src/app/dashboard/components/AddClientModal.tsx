@@ -3,6 +3,7 @@
 import { useRef, useState, useEffect, useTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { createPortalClient } from '../actions';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 interface Props {
   open: boolean;
@@ -11,6 +12,7 @@ interface Props {
 
 export default function AddClientModal({ open, onClose }: Props) {
   const formRef = useRef<HTMLFormElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [success, setSuccess] = useState(false);
@@ -19,6 +21,8 @@ export default function AddClientModal({ open, onClose }: Props) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
+
+  useFocusTrap(modalRef, open && mounted);
 
   if (!open || !mounted) return null;
 
@@ -40,7 +44,7 @@ export default function AddClientModal({ open, onClose }: Props) {
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/75 backdrop-blur-md" onClick={onClose} />
 
-      <div className="relative z-10 w-full max-w-lg bg-[#111114] rounded-2xl shadow-2xl border border-[#2e2e34] overflow-hidden animate-slideUp">
+      <div ref={modalRef} className="relative z-10 w-full max-w-lg bg-[#111114] rounded-2xl shadow-2xl border border-[#2e2e34] overflow-hidden animate-slideUp">
         {/* Header */}
         <div
           className="px-6 py-5"

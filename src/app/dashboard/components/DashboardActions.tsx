@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, FileText, Link as LinkIcon, UserPlus, Palette, ChevronDown } from 'lucide-react';
 import AddClientModal from './AddClientModal';
 import AddBrandModal from './AddBrandModal';
@@ -38,6 +38,20 @@ export default function DashboardActions({ workspaceId, clients = [] }: Props) {
     setModal(type);
     setOpen(false);
   }
+
+  // Listen for global thubpay:action custom events so the `c` / `n then p` /
+  // `n then c` keyboard shortcuts (dispatched from HelpHost) can open the
+  // corresponding create-modal from any dashboard page.
+  useEffect(() => {
+    function onAction(e: Event) {
+      const detail = (e as CustomEvent<string>).detail;
+      if (detail === 'create-invoice') setModal('invoice');
+      else if (detail === 'create-payment-link') setModal('payment-link');
+      else if (detail === 'create-customer') setModal('client');
+    }
+    window.addEventListener('thubpay:action', onAction as EventListener);
+    return () => window.removeEventListener('thubpay:action', onAction as EventListener);
+  }, []);
 
   return (
     <>
