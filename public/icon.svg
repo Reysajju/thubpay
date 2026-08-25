@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <defs>
+    <linearGradient id="icon-shield-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00F5A0" />
+      <stop offset="50%" stop-color="#00D9F5" />
+      <stop offset="100%" stop-color="#00B894" />
+    </linearGradient>
+
+    <linearGradient id="icon-shield-inner" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00F5A0" stop-opacity="0.3" />
+      <stop offset="100%" stop-color="#0a0a0c" stop-opacity="0.9" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background Shield -->
+  <path d="M50 6 L88 20 L88 52 C88 74 71 92 50 98 C29 92 12 74 12 52 L12 20 Z" 
+        fill="url(#icon-shield-inner)" 
+        stroke="url(#icon-shield-grad)" 
+        stroke-width="5" 
+        stroke-linejoin="round" />
+
+  <!-- Stylized Geometric "T" -->
+  <path d="M28 34 L72 34 L64 45 L55 45 L55 82 L45 82 L45 45 L36 45 Z" 
+        fill="#FFFFFF" />
+  
+  <!-- Cyber Accent Edge on T -->
+  <path d="M50 45 L50 80" 
+        stroke="#00F5A0" 
+        stroke-width="3" 
+        stroke-linecap="round" />
+</svg>

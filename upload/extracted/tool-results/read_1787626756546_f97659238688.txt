@@ -1,0 +1,702 @@
+     1→import { redirect } from 'next/navigation';
+     2→import { requireWorkspace } from '@/lib/dashboard-auth';
+     3→import { getInvoices, getInvoiceViewStats, getInvoiceReminders, getInvoiceOpenHeatmap } from '@/lib/demo-data';
+     4→import ReminderPanel from '../components/ReminderPanel';
+     5→import InvoiceHeatmap from '../components/InvoiceHeatmap';
+     6→import OptimalSendTimeBanner from '../components/OptimalSendTimeBanner';
+     7→import {
+     8→  MailCheck,
+     9→  Eye,
+    10→  EyeOff,
+    11→  Send,
+    12→  Clock,
+    13→  TrendingUp,
+    14→  FileText,
+    15→  ArrowUpRight,
+    16→  Bell,
+    17→  AlertCircle,
+    18→  CheckCircle2,
+    19→  ChevronLeft,
+    20→  ChevronRight,
+    21→} from 'lucide-react';
+    22→
+    23→export const dynamic = 'force-dynamic';
+    24→
+    25→// ─── helpers ──────────────────────────────────────────────────
+    26→
+    27→function toUsd(cents: number) {
+    28→  return new Intl.NumberFormat('en-US', {
+    29→    style: 'currency',
+    30→    currency: 'USD',
+    31→    minimumFractionDigits: 2,
+    32→  }).format((cents || 0) / 100);
+    33→}
+    34→
+    35→function formatRelative(date: string | Date | null): string | null {
+    36→  if (!date) return null;
+    37→  const d = typeof date === 'string' ? new Date(date) : date;
+    38→  if (Number.isNaN(d.getTime())) return null;
+    39→  const diffMs = Date.now() - d.getTime();
+    40→  if (diffMs < 0) return 'Just now';
+    41→  const sec = Math.floor(diffMs / 1000);
+    42→  if (sec < 60) return 'Just now';
+    43→  const min = Math.floor(sec / 60);
+    44→  if (min < 60) return `${min}m ago`;
+    45→  const hr = Math.floor(min / 60);
+    46→  if (hr < 24) return `${hr}h ago`;
+    47→  const day = Math.floor(hr / 24);
+    48→  if (day < 7) return `${day}d ago`;
+    49→  const wk = Math.floor(day / 7);
+    50→  if (wk < 4) return `${wk}w ago`;
+    51→  // Older than ~4 weeks — fall back to a formatted date
+    52→  return d.toLocaleDateString(undefined, {
+    53→    month: 'short',
+    54→    day: 'numeric',
+    55→    year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric',
+    56→  });
+    57→}
+    58→
+    59→const STATUS_STYLES: Record<string, string> = {
+    60→  draft: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/25',
+    61→  sent: 'bg-blue-500/15 text-blue-300 border-blue-500/25',
+    62→  viewed: 'bg-purple-500/15 text-purple-400 border-purple-500/25',
+    63→  paid: 'bg-green-500/15 text-green-400 border-green-500/25',
+    64→  overdue: 'bg-red-500/15 text-red-400 border-red-500/25',
+    65→  void: 'bg-zinc-800 text-zinc-400 border-[#252529]',
+    66→};
+    67→
+    68→function openRateColor(rate: number): string {
+    69→  if (rate >= 60) return 'text-green-400';
+    70→  if (rate >= 30) return 'text-amber-400';
+    71→  return 'text-red-400';
+    72→}
+    73→
+    74→// ─── page ─────────────────────────────────────────────────────
+    75→
+    76→const PAGE_SIZE = 10;
+    77→
+    78→export default async function LinkTrackingPage({
+    79→  searchParams,
+    80→}: {
+    81→  searchParams?: Promise<{ page?: string }>;
+    82→}) {
+    83→  const ctx = await requireWorkspace();
+    84→  if (!ctx.ok) {
+    85→    redirect('/signin');
+    86→    return;
+    87→  }
+    88→  const { workspaceId } = ctx.context;
+    89→
+    90→  const sp = await searchParams;
+    91→  const requestedPage = Math.max(1, parseInt(sp?.page || '1', 10) || 1);
+    92→
+    93→  const [viewStats, invoices, reminders, heatmap] = await Promise.all([
+    94→    getInvoiceViewStats(workspaceId),
+    95→    getInvoices(workspaceId),
+    96→    getInvoiceReminders(workspaceId, 20),
+    97→    getInvoiceOpenHeatmap(workspaceId),
+    98→  ]);
+    99→
+   100→  const { sentCount, viewedCount, notViewedCount, openRate, recentOpens } =
+   101→    viewStats;
+   102→
+   103→  const totalInvoices = invoices.length;
+   104→  const openedPct = openRate; // % of sent that were opened
+   105→  const notOpenedPct = sentCount > 0 ? 100 - openedPct : 0;
+   106→
+   107→  // Pagination for the All Invoices table
+   108→  const totalPages = Math.max(1, Math.ceil(totalInvoices / PAGE_SIZE));
+   109→  const currentPage = Math.min(requestedPage, totalPages);
+   110→  const pageStart = (currentPage - 1) * PAGE_SIZE;
+   111→  const pageEnd = Math.min(pageStart + PAGE_SIZE, totalInvoices);
+   112→  const pagedInvoices = invoices.slice(pageStart, pageEnd);
+   113→
+   114→  const statCards = [
+   115→    {
+   116→      label: 'Sent',
+   117→      value: String(sentCount),
+   118→      subtext: `${totalInvoices} total invoices`,
+   119→      icon: Send,
+   120→      iconBg: 'bg-blue-500/10',
+   121→      iconColor: 'text-blue-400',
+   122→      valueColor: 'text-white',
+   123→    },
+   124→    {
+   125→      label: 'Opened',
+   126→      value: String(viewedCount),
+   127→      subtext: sentCount > 0 ? `${openRate}% of sent` : '—',
+   128→      icon: Eye,
+   129→      iconBg: 'bg-emerald-500/10',
+   130→      iconColor: 'text-[#34D399]',
+   131→      valueColor: 'text-[#34D399]',
+   132→    },
+   133→    {
+   134→      label: 'Not Opened',
+   135→      value: String(notViewedCount),
+   136→      subtext: 'Awaiting client',
+   137→      icon: EyeOff,
+   138→      iconBg: 'bg-amber-500/10',
+   139→      iconColor: 'text-amber-400',
+   140→      valueColor: 'text-amber-400',
+   141→    },
+   142→    {
+   143→      label: 'Open Rate',
+   144→      value: `${openRate}%`,
+   145→      subtext:
+   146→        openRate >= 60
+   147→          ? 'Strong engagement'
+   148→          : openRate >= 30
+   149→            ? 'Room to improve'
+   150→            : sentCount > 0
+   151→              ? 'Low engagement'
+   152→              : 'No data yet',
+   153→      icon: TrendingUp,
+   154→      iconBg: 'bg-emerald-500/10',
+   155→      iconColor:
+   156→        openRate >= 60
+   157→          ? 'text-[#10B981]'
+   158→          : openRate >= 30
+   159→            ? 'text-amber-400'
+   160→            : 'text-red-400',
+   161→      valueColor: openRateColor(openRate),
+   162→    },
+   163→  ];
+   164→
+   165→  return (
+   166→    <section className="p-4 sm:p-6 lg:p-8">
+   167→      <div className="max-w-7xl mx-auto">
+   168→        {/* Header */}
+   169→        <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4 animate-fadeIn">
+   170→          <div>
+   171→            <div className="flex items-center gap-2 mb-1">
+   172→              <span className="flex items-center gap-1.5 text-[11px] font-semibold text-[#10B981] bg-[#10B981]/10 px-2 py-0.5 rounded-full border border-[#10B981]/20">
+   173→                <MailCheck className="w-3 h-3" />
+   174→                {totalInvoices} invoices tracked
+   175→              </span>
+   176→            </div>
+   177→            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+   178→              Link Tracking
+   179→            </h1>
+   180→            <p className="text-zinc-500 text-sm mt-1">
+   181→              See exactly when clients open your invoices — no more guessing.
+   182→            </p>
+   183→          </div>
+   184→        </div>
+   185→
+   186→        {/* Smart send-time recommendation banner */}
+   187→        <OptimalSendTimeBanner
+   188→          totalViews={heatmap.total_views}
+   189→          peakDay={heatmap.peak_day}
+   190→          peakHour={heatmap.peak_hour}
+   191→          peakCell={heatmap.peak_cell}
+   192→          cells={heatmap.cells}
+   193→        />
+   194→
+   195→        {/* Stat cards row */}
+   196→        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+   197→          {statCards.map((card, i) => (
+   198→            <div
+   199→              key={card.label}
+   200→              className={`glass-card glass-card-hover stat-card-hover glass-card-press rounded-2xl p-4 sm:p-5 animate-stagger stagger-${i + 1}`}
+   201→            >
+   202→              <div className="flex items-start justify-between mb-3">
+   203→                <div
+   204→                  className={`flex items-center justify-center w-9 h-9 rounded-xl ${card.iconBg}`}
+   205→                >
+   206→                  <card.icon className={`w-4 h-4 ${card.iconColor}`} />
+   207→                </div>
+   208→              </div>
+   209→              <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
+   210→                {card.label}
+   211→              </p>
+   212→              <p
+   213→                className={`text-xl sm:text-2xl font-black ${card.valueColor} animate-count tabular-nums`}
+   214→              >
+   215→                {card.value}
+   216→              </p>
+   217→              <p className="text-[11px] text-zinc-500 mt-1 truncate">
+   218→                {card.subtext}
+   219→              </p>
+   220→            </div>
+   221→          ))}
+   222→        </div>
+   223→
+   224→        {/* Open Rate Visualization */}
+   225→        <div className="glass-card rounded-3xl p-4 sm:p-6 mb-6 animate-fadeIn">
+   226→          <div className="flex items-center justify-between mb-4">
+   227→            <div className="flex items-center gap-2.5">
+   228→              <TrendingUp className="w-4 h-4 text-[#10B981]" />
+   229→              <h2 className="text-base font-bold text-white">Open Rate</h2>
+   230→            </div>
+   231→            <div className="flex items-center gap-3 text-xs">
+   232→              <span className="flex items-center gap-1.5 text-zinc-400">
+   233→                <span className="w-2.5 h-2.5 rounded-full bg-[#10B981]" />
+   234→                Opened {viewedCount}
+   235→              </span>
+   236→              <span className="flex items-center gap-1.5 text-zinc-400">
+   237→                <span className="w-2.5 h-2.5 rounded-full bg-zinc-600" />
+   238→                Not opened {notViewedCount}
+   239→              </span>
+   240→            </div>
+   241→          </div>
+   242→
+   243→          {/* Segmented bar */}
+   244→          <div className="flex h-3 w-full overflow-hidden rounded-full bg-zinc-800/60 border border-[#252529]">
+   245→            <div
+   246→              className="h-full bg-gradient-to-r from-[#10B981] to-[#34D399] transition-all duration-700"
+   247→              style={{ width: `${Math.max(openedPct, sentCount > 0 ? 2 : 0)}%` }}
+   248→              aria-label={`${openedPct}% opened`}
+   249→            />
+   250→            <div
+   251→              className="h-full bg-zinc-700 transition-all duration-700"
+   252→              style={{ width: `${notOpenedPct}%` }}
+   253→              aria-label={`${notOpenedPct}% not opened`}
+   254→            />
+   255→          </div>
+   256→
+   257→          <div className="mt-3 flex items-center justify-between text-xs">
+   258→            <span className="text-zinc-500">
+   259→              {sentCount > 0
+   260→                ? `${viewedCount} of ${sentCount} sent invoices opened`
+   261→                : 'No sent invoices yet'}
+   262→            </span>
+   263→            <span className={`font-bold ${openRateColor(openRate)}`}>
+   264→              {openRate}% open rate
+   265→            </span>
+   266→          </div>
+   267→        </div>
+   268→
+   269→        {/* All invoices table */}
+   270→        <div className="glass-card rounded-3xl p-4 sm:p-6 mb-6 animate-fadeIn">
+   271→          <div className="flex items-center justify-between mb-6">
+   272→            <div className="flex items-center gap-2.5">
+   273→              <FileText className="w-4 h-4 text-[#10B981]" />
+   274→              <h2 className="text-lg font-bold text-white">All Invoices</h2>
+   275→              <span className="text-[10px] font-bold text-zinc-500 bg-zinc-800/50 px-2 py-0.5 rounded-full border border-[#252529]">
+   276→                {totalInvoices}
+   277→              </span>
+   278→            </div>
+   279→          </div>
+   280→
+   281→          <div className="overflow-x-auto">
+   282→            <table className="w-full min-w-[800px] text-left text-sm whitespace-nowrap">
+   283→              <thead>
+   284→                <tr className="text-zinc-500 border-b border-[#252529]/60">
+   285→                  <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider">
+   286→                    Invoice #
+   287→                  </th>
+   288→                  <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider">
+   289→                    Client
+   290→                  </th>
+   291→                  <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider text-right">
+   292→                    Amount
+   293→                  </th>
+   294→                  <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider text-center">
+   295→                    Status
+   296→                  </th>
+   297→                  <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider">
+   298→                    Viewed
+   299→                  </th>
+   300→                  <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider">
+   301→                    Last Viewed
+   302→                  </th>
+   303→                  <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider text-center">
+   304→                    Actions
+   305→                  </th>
+   306→                </tr>
+   307→              </thead>
+   308→              <tbody className="divide-y divide-[#252529]/30">
+   309→                {totalInvoices === 0 ? (
+   310→                  <tr>
+   311→                    <td colSpan={7} className="py-12 text-center">
+   312→                      <FileText className="w-8 h-8 text-zinc-700 mx-auto mb-2" />
+   313→                      <p className="text-sm text-zinc-500">No invoices yet</p>
+   314→                      <p className="text-xs text-zinc-600 mt-1">
+   315→                        Create and send an invoice to start tracking opens.
+   316→                      </p>
+   317→                    </td>
+   318→                  </tr>
+   319→                ) : (
+   320→                  pagedInvoices.map((inv, i) => {
+   321→                    const sentAt = inv.sent_at;
+   322→                    const viewed = (inv.view_count || 0) > 0;
+   323→                    const lastView = inv.last_viewed_at
+   324→                      ? formatRelative(inv.last_viewed_at)
+   325→                      : null;
+   326→                    const sentRel = sentAt ? formatRelative(sentAt) : null;
+   327→
+   328→                    return (
+   329→                      <tr
+   330→                        key={inv.id}
+   331→                        className={`hover:bg-white/5 transition-colors group animate-stagger stagger-${Math.min(i + 1, 6)}`}
+   332→                      >
+   333→                        <td className="py-3">
+   334→                          <a
+   335→                            href={`/invoice/${inv.id}`}
+   336→                            className="font-mono text-[#10B981] text-xs hover:text-[#34D399] transition-colors"
+   337→                          >
+   338→                            {inv.invoice_number || inv.id?.slice(0, 8)}
+   339→                          </a>
+   340→                        </td>
+   341→                        <td className="py-3">
+   342→                          <div className="flex items-center gap-2">
+   343→                            <div className="w-7 h-7 rounded-full bg-[#10B981]/15 flex items-center justify-center text-[#10B981] font-bold text-[10px]">
+   344→                              {(
+   345→                                inv.clients?.name ||
+   346→                                inv.clients?.email ||
+   347→                                'U'
+   348→                              )[0].toUpperCase()}
+   349→                            </div>
+   350→                            <div>
+   351→                              <p className="text-zinc-200 font-medium text-sm">
+   352→                                {inv.clients?.name || 'Unknown'}
+   353→                              </p>
+   354→                              {inv.clients?.email && (
+   355→                                <p className="text-zinc-600 text-[10px]">
+   356→                                  {inv.clients.email}
+   357→                                </p>
+   358→                              )}
+   359→                            </div>
+   360→                          </div>
+   361→                        </td>
+   362→                        <td className="py-3 text-right font-semibold text-white text-sm">
+   363→                          {toUsd(inv.total_cents)}
+   364→                        </td>
+   365→                        <td className="py-3 text-center">
+   366→                          <span
+   367→                            className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${STATUS_STYLES[inv.status] || STATUS_STYLES.draft}`}
+   368→                          >
+   369→                            {inv.status}
+   370→                          </span>
+   371→                        </td>
+   372→                        <td className="py-3">
+   373→                          {!sentAt ? (
+   374→                            <div className="flex flex-col gap-0.5">
+   375→                              <span className="text-xs text-zinc-600">Not sent</span>
+   376→                            </div>
+   377→                          ) : viewed ? (
+   378→                            <div className="flex flex-col gap-0.5">
+   379→                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-emerald-500/15 text-emerald-400 border-emerald-500/25 w-fit">
+   380→                                <Eye className="w-2.5 h-2.5" />
+   381→                                Viewed
+   382→                              </span>
+   383→                              <span className="text-[10px] text-zinc-600">
+   384→                                {inv.view_count}× · Last{' '}
+   385→                                {lastView || '—'}
+   386→                              </span>
+   387→                            </div>
+   388→                          ) : (
+   389→                            <div className="flex flex-col gap-0.5">
+   390→                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-500/15 text-amber-400 border-amber-500/25 w-fit">
+   391→                                <Clock className="w-2.5 h-2.5" />
+   392→                                Sent, not opened
+   393→                              </span>
+   394→                              <span className="text-[10px] text-zinc-600">
+   395→                                Sent {sentRel || '—'}
+   396→                              </span>
+   397→                            </div>
+   398→                          )}
+   399→                        </td>
+   400→                        <td className="py-3">
+   401→                          {lastView ? (
+   402→                            <span className="text-xs text-zinc-300">
+   403→                              {lastView}
+   404→                            </span>
+   405→                          ) : (
+   406→                            <span className="text-xs text-zinc-700">—</span>
+   407→                          )}
+   408→                        </td>
+   409→                        <td className="py-3 text-center">
+   410→                          <a
+   411→                            href={`/invoice/${inv.id}`}
+   412→                            className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-[#10B981] transition-colors"
+   413→                          >
+   414→                            View
+   415→                            <ArrowUpRight className="w-3 h-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+   416→                          </a>
+   417→                        </td>
+   418→                      </tr>
+   419→                    );
+   420→                  })
+   421→                )}
+   422→              </tbody>
+   423→            </table>
+   424→          </div>
+   425→
+   426→          {/* Pagination controls */}
+   427→          {totalInvoices > PAGE_SIZE && (
+   428→            <div className="flex items-center justify-between mt-4 pt-4 border-t border-[#252529]/40">
+   429→              <p className="text-[11px] text-zinc-500 tabular-nums">
+   430→                Showing <span className="text-zinc-300 font-bold">{pageStart + 1}–{pageEnd}</span>{' '}
+   431→                of <span className="text-zinc-300 font-bold">{totalInvoices}</span> invoices
+   432→              </p>
+   433→              <div className="flex items-center gap-1">
+   434→                {currentPage > 1 ? (
+   435→                  <a
+   436→                    href={`/dashboard/link-tracking?page=${currentPage - 1}`}
+   437→                    className="px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-300 border border-[#252529] hover:border-[#10B981]/40 hover:text-[#10B981] transition-all flex items-center gap-1"
+   438→                  >
+   439→                    <ChevronLeft className="w-3 h-3" />
+   440→                    Prev
+   441→                  </a>
+   442→                ) : (
+   443→                  <span className="px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-700 border border-[#252529]/40 cursor-not-allowed flex items-center gap-1">
+   444→                    <ChevronLeft className="w-3 h-3" />
+   445→                    Prev
+   446→                  </span>
+   447→                )}
+   448→
+   449→                {/* Page number pills */}
+   450→                <div className="flex items-center gap-1 mx-1">
+   451→                  {Array.from({ length: Math.min(totalPages, 7) }).map((_, idx) => {
+   452→                    let pageNum: number;
+   453→                    if (totalPages <= 7) {
+   454→                      pageNum = idx + 1;
+   455→                    } else if (currentPage <= 4) {
+   456→                      pageNum = idx + 1;
+   457→                    } else if (currentPage >= totalPages - 3) {
+   458→                      pageNum = totalPages - 6 + idx;
+   459→                    } else {
+   460→                      pageNum = currentPage - 3 + idx;
+   461→                    }
+   462→                    const isActive = pageNum === currentPage;
+   463→                    return (
+   464→                      <a
+   465→                        key={pageNum}
+   466→                        href={`/dashboard/link-tracking?page=${pageNum}`}
+   467→                        className={`w-7 h-7 rounded-md text-xs font-bold flex items-center justify-center transition-all tabular-nums ${
+   468→                          isActive
+   469→                            ? 'bg-gradient-to-br from-[#10B981] to-[#059669] text-white shadow-lg shadow-[#10B981]/20'
+   470→                            : 'text-zinc-400 border border-[#252529]/60 hover:border-[#10B981]/40 hover:text-[#10B981]'
+   471→                        }`}
+   472→                      >
+   473→                        {pageNum}
+   474→                      </a>
+   475→                    );
+   476→                  })}
+   477→                </div>
+   478→
+   479→                {currentPage < totalPages ? (
+   480→                  <a
+   481→                    href={`/dashboard/link-tracking?page=${currentPage + 1}`}
+   482→                    className="px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-300 border border-[#252529] hover:border-[#10B981]/40 hover:text-[#10B981] transition-all flex items-center gap-1"
+   483→                  >
+   484→                    Next
+   485→                    <ChevronRight className="w-3 h-3" />
+   486→                  </a>
+   487→                ) : (
+   488→                  <span className="px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-700 border border-[#252529]/40 cursor-not-allowed flex items-center gap-1">
+   489→                    Next
+   490→                    <ChevronRight className="w-3 h-3" />
+   491→                  </span>
+   492→                )}
+   493→              </div>
+   494→            </div>
+   495→          )}
+   496→        </div>
+   497→
+   498→        {/* Recent opens list */}
+   499→        <div className="glass-card rounded-3xl p-4 sm:p-6 animate-fadeIn">
+   500→          <div className="flex items-center justify-between mb-6">
+   501→            <div className="flex items-center gap-2.5">
+   502→              <Eye className="w-4 h-4 text-[#34D399]" />
+   503→              <h2 className="text-lg font-bold text-white">Recent Opens</h2>
+   504→              <span className="text-[10px] font-bold text-zinc-500 bg-zinc-800/50 px-2 py-0.5 rounded-full border border-[#252529]">
+   505→                {recentOpens.length}
+   506→              </span>
+   507→            </div>
+   508→            {recentOpens.length > 0 && (
+   509→              <a
+   510→                href="/dashboard/transactions"
+   511→                className="flex items-center gap-1 text-xs text-[#10B981] hover:text-[#34D399] transition-colors group"
+   512→              >
+   513→                View all
+   514→                <ArrowUpRight className="w-3 h-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+   515→              </a>
+   516→            )}
+   517→          </div>
+   518→
+   519→          {recentOpens.length === 0 ? (
+   520→            <div className="py-12 text-center">
+   521→              <MailCheck className="w-10 h-10 text-zinc-700 mx-auto mb-3" />
+   522→              <p className="text-sm text-zinc-500">No invoice opens tracked yet</p>
+   523→              <p className="text-xs text-zinc-600 mt-1">
+   524→                Once a client opens an invoice you&apos;ve sent, you&apos;ll see it here.
+   525→              </p>
+   526→            </div>
+   527→          ) : (
+   528→            <ul className="max-h-96 overflow-y-auto custom-scrollbar divide-y divide-[#252529]/30">
+   529→              {recentOpens.slice(0, 10).map((open, i) => {
+   530→                const lastView = open.last_viewed_at
+   531→                  ? formatRelative(open.last_viewed_at)
+   532→                  : open.first_viewed_at
+   533→                    ? formatRelative(open.first_viewed_at)
+   534→                    : null;
+   535→                return (
+   536→                  <li
+   537→                    key={open.id}
+   538→                    className={`animate-stagger stagger-${Math.min(i + 1, 6)}`}
+   539→                  >
+   540→                    <a
+   541→                      href={`/invoice/${open.id}`}
+   542→                      className="flex items-center gap-3 py-3 px-2 -mx-2 rounded-lg hover:bg-white/5 transition-colors group"
+   543→                    >
+   544→                      {/* Status indicator dot */}
+   545→                      <span className="relative flex items-center justify-center w-8 h-8 rounded-full bg-[#10B981]/15 flex-shrink-0">
+   546→                        <Eye className="w-3.5 h-3.5 text-[#34D399]" />
+   547→                      </span>
+   548→
+   549→                      {/* Invoice + client */}
+   550→                      <div className="flex-1 min-w-0">
+   551→                        <div className="flex items-center gap-2">
+   552→                          <span className="font-mono text-xs text-[#10B981] group-hover:text-[#34D399] transition-colors truncate">
+   553→                            {open.invoice_number || open.id.slice(0, 8)}
+   554→                          </span>
+   555→                          <span className="text-[10px] text-zinc-600">·</span>
+   556→                          <span className="text-sm text-zinc-200 font-medium truncate">
+   557→                            {open.client_name || open.client_email || 'Unknown client'}
+   558→                          </span>
+   559→                        </div>
+   560→                        <div className="flex items-center gap-2 mt-0.5 text-[11px] text-zinc-500">
+   561→                          <Clock className="w-2.5 h-2.5" />
+   562→                          <span>
+   563→                            {lastView ? `Viewed ${lastView}` : 'Viewed'}
+   564→                          </span>
+   565→                          {open.last_viewer_location && (
+   566→                            <>
+   567→                              <span className="text-zinc-700">·</span>
+   568→                              <span className="truncate">
+   569→                                {open.last_viewer_location}
+   570→                              </span>
+   571→                            </>
+   572→                          )}
+   573→                        </div>
+   574→                      </div>
+   575→
+   576→                      {/* View count badge */}
+   577→                      <div className="flex items-center gap-2 flex-shrink-0">
+   578→                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#10B981]/10 text-[#34D399] border border-[#10B981]/20">
+   579→                          <Eye className="w-2.5 h-2.5" />
+   580→                          {open.view_count}×
+   581→                        </span>
+   582→                        <ArrowUpRight className="w-3.5 h-3.5 text-zinc-600 group-hover:text-[#10B981] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
+   583→                      </div>
+   584→                    </a>
+   585→                  </li>
+   586→                );
+   587→              })}
+   588→            </ul>
+   589→          )}
+   590→        </div>
+   591→
+   592→        {/* Invoice Open Heatmap */}
+   593→        <div className="mt-6">
+   594→          <InvoiceHeatmap
+   595→            cells={heatmap.cells}
+   596→            totalViews={heatmap.total_views}
+   597→            peakDay={heatmap.peak_day}
+   598→            peakHour={heatmap.peak_hour}
+   599→            peakCell={heatmap.peak_cell}
+   600→          />
+   601→        </div>
+   602→
+   603→        {/* Auto-Reminder Panel */}
+   604→        <div className="mt-6">
+   605→          <ReminderPanel notViewedCount={notViewedCount} />
+   606→        </div>
+   607→
+   608→        {/* Reminders History */}
+   609→        {reminders.length > 0 && (
+   610→          <div className="glass-card rounded-3xl p-4 sm:p-6 mt-6 animate-fadeIn">
+   611→            <div className="flex items-center justify-between mb-6">
+   612→              <div className="flex items-center gap-2.5">
+   613→                <Bell className="w-4 h-4 text-[#10B981]" />
+   614→                <h2 className="text-lg font-bold text-white">Reminders Sent</h2>
+   615→                <span className="text-[10px] font-bold text-zinc-500 bg-zinc-800/50 px-2 py-0.5 rounded-full border border-[#252529]">
+   616→                  {reminders.length}
+   617→                </span>
+   618→              </div>
+   619→              <span className="text-[11px] text-zinc-500">
+   620→                Last {reminders.length} reminder{reminders.length === 1 ? '' : 's'}
+   621→              </span>
+   622→            </div>
+   623→
+   624→            <div className="overflow-x-auto">
+   625→              <table className="w-full min-w-[640px] text-left text-sm whitespace-nowrap">
+   626→                <thead>
+   627→                  <tr className="text-zinc-500 border-b border-[#252529]/60">
+   628→                    <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider">Type</th>
+   629→                    <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider">Invoice</th>
+   630→                    <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider">Client</th>
+   631→                    <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider text-right">Amount</th>
+   632→                    <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider text-right">Sent</th>
+   633→                  </tr>
+   634→                </thead>
+   635→                <tbody className="divide-y divide-[#252529]/30">
+   636→                  {reminders.map((r, i) => {
+   637→                    const tierConfig: Record<string, { label: string; bg: string; text: string; border: string; icon: any }> = {
+   638→                      unviewed: {
+   639→                        label: '1-day nudge',
+   640→                        bg: 'bg-amber-500/15',
+   641→                        text: 'text-amber-400',
+   642→                        border: 'border-amber-500/25',
+   643→                        icon: Bell,
+   644→                      },
+   645→                      followup: {
+   646→                        label: '3-day follow-up',
+   647→                        bg: 'bg-orange-500/15',
+   648→                        text: 'text-orange-400',
+   649→                        border: 'border-orange-500/25',
+   650→                        icon: AlertCircle,
+   651→                      },
+   652→                      final: {
+   653→                        label: 'Final + overdue',
+   654→                        bg: 'bg-red-500/15',
+   655→                        text: 'text-red-400',
+   656→                        border: 'border-red-500/25',
+   657→                        icon: AlertCircle,
+   658→                      },
+   659→                    };
+   660→                    const cfg = tierConfig[r.type] || tierConfig.unviewed;
+   661→                    const Icon = cfg.icon;
+   662→                    return (
+   663→                      <tr
+   664→                        key={r.id}
+   665→                        className={`hover:bg-white/5 transition-colors animate-stagger stagger-${Math.min(i + 1, 6)}`}
+   666→                      >
+   667→                        <td className="py-3">
+   668→                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${cfg.bg} ${cfg.text} ${cfg.border}`}>
+   669→                            <Icon className="w-2.5 h-2.5" />
+   670→                            {cfg.label}
+   671→                          </span>
+   672→                        </td>
+   673→                        <td className="py-3">
+   674→                          <a
+   675→                            href={`/invoice/${r.invoice_id}`}
+   676→                            className="font-mono text-[#10B981] text-xs hover:text-[#34D399] transition-colors"
+   677→                          >
+   678→                            {r.invoice_number || r.invoice_id.slice(0, 8)}
+   679→                          </a>
+   680→                        </td>
+   681→                        <td className="py-3 text-zinc-300 text-sm">
+   682→                          {r.client_name || 'Unknown'}
+   683→                        </td>
+   684→                        <td className="py-3 text-right font-semibold text-white text-sm tabular-nums">
+   685→                          {toUsd(r.total_cents)}
+   686→                        </td>
+   687→                        <td className="py-3 text-right text-zinc-400 text-xs tabular-nums">
+   688→                          {formatRelative(r.sent_at) || '—'}
+   689→                        </td>
+   690→                      </tr>
+   691→                    );
+   692→                  })}
+   693→                </tbody>
+   694→              </table>
+   695→            </div>
+   696→          </div>
+   697→        )}
+   698→      </div>
+   699→    </section>
+   700→  );
+   701→}
+   702→

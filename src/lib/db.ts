@@ -1,0 +1,19 @@
+import { PrismaClient } from '@prisma/client';
+
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined;
+};
+
+// L7 fix: enable Prisma query logging in dev (helps debug N+1 / hot paths),
+// keep only `error` + `warn` in production to avoid leaking query text.
+const logLevel =
+  process.env.NODE_ENV === 'production'
+    ? ['error', 'warn']
+    : process.env.DEBUG_PRISMALOG
+      ? (['query', 'error', 'warn'] as const)
+      : (['error', 'warn'] as const);
+
+export const db =
+  globalForPrisma.prisma ?? new PrismaClient({ log: logLevel });
+
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db;

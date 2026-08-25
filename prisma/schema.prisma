@@ -1,0 +1,496 @@
+// ═══════════════════════════════════════════════════════════════
+// ThubPay — Production Prisma Schema
+// Supports SQLite (local) and PostgreSQL (Vercel/Neon/Supabase)
+//
+// LOCAL DEV  → DATABASE_URL="file:../db/custom.db"   provider="sqlite"
+// VERCEL     → DATABASE_URL="postgresql://..."        provider="postgresql"
+//
+// To deploy on Vercel:
+//   1. Change provider below to "postgresql"
+//   2. Set DATABASE_URL in Vercel dashboard → env vars
+//   3. Run: npx prisma db push (via Vercel build command or locally)
+// ═══════════════════════════════════════════════════════════════
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── App Users (auth) ─────────────────────────────────────────
+model AppUser {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  passwordHash String
+  role         String   @default("owner") // owner | admin | member | viewer
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspaces   WorkspaceMember[]
+  sessions     UserSession[]
+  auditLogs    AuditLog[]
+
+  @@map("app_users")
+}
+
+// ─── Workspaces (tenants) ─────────────────────────────────────
+model Workspace {
+  id                  String   @id @default(cuid())
+  name                String
+  slug                String?  @unique
+  ownerUserId         String
+  plan                String   @default("free") // free | pro | scale | enterprise
+  baseCurrency        String   @default("USD")
+  monthlyTargetCents  Int      @default(0)
+  logoUrl             String?
+  onboardingCompleted Boolean  @default(false)
+  // SLA threshold (%) — endpoints below this uptime trigger breach alerts.
+  // Configurable per workspace via the developers page UI. Default 90.
+  slaThreshold        Int      @default(90)
+  // Theme preference: "dark" | "light" | "system". Default "dark" (matches existing dashboard).
+  themePreference     String   @default("dark")
+  // Notification preferences — comma-separated list of DISABLED notification types.
+  // E.g. "warning,info" means the workspace won't receive warning or info notifications.
+  // Supported types: payment, info, success, warning, error, dispute.
+  // Empty string = all notifications enabled.
+  mutedNotificationTypes String @default("")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  members             WorkspaceMember[]
+  clients             Client[]
+  invoices            Invoice[]
+  gateways            GatewayCredential[]
+  apiKeys             ApiKey[]
+  webhookEvents       WebhookEvent[]
+  webhookEndpoints    WebhookEndpoint[]
+  webhookDeliveries   WebhookDelivery[]
+  webhookHealthChecks EndpointHealthCheck[]
+  notifications       Notification[]
+  transactions        Transaction[]
+  auditLogs           AuditLog[]
+  subscriptions       Subscription[]
+  automationRules     AutomationRule[]
+  onboarding          OnboardingProgress?
+
+  @@map("workspaces")
+}
+
+// ─── Workspace Members ────────────────────────────────────────
+model WorkspaceMember {
+  id          String   @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        String   @default("owner") // owner | admin | member | viewer
+  createdAt   DateTime @default(now())
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        AppUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@map("workspace_members")
+}
+
+// ─── Clients ──────────────────────────────────────────────────
+model Client {
+  id                String   @id @default(cuid())
+  workspaceId       String
+  name              String
+  email             String?
+  phone             String?
+  company           String?
+  totalSpendCents   Int      @default(0)
+  transactionCount  Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  invoices          Invoice[]
+  subscriptions     Subscription[]
+
+  // E15 fix: prevent duplicate client emails within the same workspace.
+  @@unique([workspaceId, email])
+  @@index([workspaceId])
+  @@map("clients")
+}
+
+// ─── Invoices ─────────────────────────────────────────────────
+model Invoice {
+  id                  String   @id @default(cuid())
+  workspaceId         String
+  clientId            String?
+  invoiceNumber       String?
+  status              String   @default("draft") // draft | sent | viewed | paid | overdue | void
+  totalCents          Int      @default(0)
+  currency            String   @default("USD")
+  dueDate             DateTime?
+  // When the invoice was actually paid (null until payment succeeds).
+  // Distinct from `updatedAt` so reports can show true settlement time.
+  paidAt              DateTime?
+  paidViaGateway      String?
+  customPaymentGateway String?
+  notes               String?
+
+  // ── Link Tracking ──────────────────────────────────────────
+  // Separate public token (NOT the invoice id) — shared in the
+  // payment link so the tracking pixel URL can't be guessed.
+  trackingToken       String?  @unique
+  sentAt              DateTime? // when the owner dispatched the invoice
+  firstViewedAt       DateTime? // first time the client opened the link
+  lastViewedAt        DateTime? // most recent view
+  viewCount           Int      @default(0)
+  lastViewerIp       String?
+  lastViewerUserAgent String?
+  lastViewerLocation  String?  // city/region/country parsed from headers (best-effort)
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  workspace           Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client              Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  transactions        Transaction[]
+  invoiceViews        InvoiceView[]
+  reminders           InvoiceReminder[]
+
+  @@index([workspaceId])
+  @@index([clientId])
+  @@index([status])
+  @@index([trackingToken])
+  // H15 fix: prevent duplicate invoice numbers within a workspace.
+  // Without this, two concurrent createInvoice() calls read the same count
+  // and insert the same INV-YYYY-NNN — breaking CSV exports + accounting.
+  @@unique([workspaceId, invoiceNumber])
+  @@map("invoices")
+}
+
+// ─── Invoice Views (one row per client open — full audit trail) ──
+model InvoiceView {
+  id           String   @id @default(cuid())
+  invoiceId    String
+  viewedAt     DateTime @default(now())
+  ipAddress    String?
+  userAgent    String?
+  referrer     String?
+  location     String?
+
+  invoice       Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@index([viewedAt])
+  @@map("invoice_views")
+}
+
+// ─── Invoice Reminders (sent when invoice hasn't been viewed) ──
+model InvoiceReminder {
+  id           String   @id @default(cuid())
+  invoiceId    String
+  workspaceId  String
+  type         String   @default("unviewed") // unviewed | overdue | followup
+  sentAt       DateTime @default(now())
+  message      String?
+
+  invoice       Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@index([workspaceId])
+  @@index([sentAt])
+  @@map("invoice_reminders")
+}
+
+// ─── Gateway Credentials ─────────────────────────────────────
+model GatewayCredential {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  gatewaySlug     String   // stripe | paypal | square | razorpay | custom
+  label           String
+  publishableKey  String?
+  secretKeyEnc    String?  // encrypted at rest (base64 + app secret)
+  webhookSecret   String?
+  mode            String   @default("test") // test | live
+  isActive        Boolean  @default(true)
+  isDefault       Boolean  @default(false)
+  metadata        String?  // JSON string for gateway-specific config
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  transactions    Transaction[]
+  subscriptions   Subscription[]
+
+  @@index([workspaceId])
+  @@index([gatewaySlug])
+  @@map("gateway_credentials")
+}
+
+// ─── Transactions (payment attempts / settlements) ────────────
+model Transaction {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  invoiceId       String?
+  gatewayId       String?
+  gatewaySlug     String
+  externalId      String?  // payment_intent / charge id from gateway
+  amountCents     Int
+  currency        String   @default("USD")
+  status          String   @default("pending") // pending | succeeded | failed | refunded | disputed
+  failureReason   String?
+  customerEmail   String?
+  customerName    String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace       Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  invoice         Invoice?           @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  gateway         GatewayCredential? @relation(fields: [gatewayId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([invoiceId])
+  @@index([gatewayId])
+  @@index([status])
+  @@map("transactions")
+}
+
+// ─── API Keys ─────────────────────────────────────────────────
+model ApiKey {
+  id           String    @id @default(cuid())
+  tenantId     String
+  name         String
+  keyPrefix    String
+  keyHash      String
+  keyMasked    String
+  isActive     Boolean   @default(true)
+  lastUsedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  workspace    Workspace @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("api_keys")
+}
+
+// ─── Webhook Events (audit log) ───────────────────────────────
+model WebhookEvent {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  eventType    String
+  gateway      String?
+  status       String   @default("pending") // success | failed | pending
+  payload      String   @default("{}") // JSON string
+  createdAt    DateTime @default(now())
+
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  deliveries   WebhookDelivery[]
+
+  @@index([workspaceId])
+  @@map("webhook_events")
+}
+
+// ─── Webhook Endpoints (user-configured URLs to dispatch events to) ──
+model WebhookEndpoint {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  label        String
+  url          String
+  // Comma-separated list of subscribed event types (e.g. "invoice.viewed,payment.succeeded")
+  events       String   @default("*")
+  // Optional shared secret for HMAC signing (HMAC-SHA256 of payload, sent in X-ThubPay-Signature header)
+  secret       String?
+  isActive     Boolean  @default(true)
+  lastTriggeredAt DateTime?
+  lastStatus   String?  // success | failed
+  // Per-endpoint SLA threshold override (null = use workspace default).
+  // When set, this endpoint uses its own threshold instead of the workspace's.
+  slaThresholdOverride Int?
+  // Optional folder/group name for organizing endpoints in the UI.
+  // Endpoints with the same folder value are grouped together visually.
+  folder       String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  deliveries   WebhookDelivery[]
+  healthChecks EndpointHealthCheck[]
+
+  @@index([workspaceId])
+  @@index([isActive])
+  @@map("webhook_endpoints")
+}
+
+// ─── Webhook Deliveries (one row per delivery attempt to a WebhookEndpoint) ──
+model WebhookDelivery {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  webhookEventId String?
+  webhookEndpointId String?
+  // HTTP status code from the endpoint (0 if connection failed)
+  statusCode    Int?
+  // "ok" | "failed" | "pending"
+  status        String   @default("pending")
+  // Error message if failed
+  error         String?
+  // Response body (truncated to 4KB for safety)
+  responseSnippet String?
+  durationMs    Int?
+  attemptedAt   DateTime @default(now())
+
+  workspace       Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  webhookEvent    WebhookEvent?    @relation(fields: [webhookEventId], references: [id], onDelete: Cascade)
+  webhookEndpoint WebhookEndpoint? @relation(fields: [webhookEndpointId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([webhookEventId])
+  @@index([webhookEndpointId])
+  @@index([status])
+  @@map("webhook_deliveries")
+}
+
+// ─── Webhook Endpoint Health Checks (periodic ping audit trail) ──
+model EndpointHealthCheck {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  webhookEndpointId String
+  // HTTP status code from the HEAD request (null if connection failed)
+  statusCode      Int?
+  // "healthy" | "unhealthy"
+  status          String
+  // Response time in ms
+  durationMs      Int?
+  // Error message if unhealthy
+  error           String?
+  // Whether this check was triggered manually ("manual") or by the scheduled sweep ("scheduled")
+  triggeredBy     String   @default("manual")
+  checkedAt       DateTime @default(now())
+
+  workspace       Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  webhookEndpoint WebhookEndpoint @relation(fields: [webhookEndpointId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([webhookEndpointId])
+  @@index([status])
+  @@index([checkedAt])
+  @@map("endpoint_health_checks")
+}
+
+// ─── Notifications ────────────────────────────────────────────
+model Notification {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  title        String
+  body         String?
+  type         String   @default("info") // info | success | warning | error | payment | dispute
+  isRead       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("notifications")
+}
+
+// ─── User Sessions (for audit / revocation) ───────────────────
+model UserSession {
+  id           String    @id @default(cuid())
+  userId       String
+  token        String    @unique
+  userAgent    String?
+  ipAddress    String?
+  expiresAt    DateTime
+  createdAt    DateTime  @default(now())
+  revokedAt    DateTime?
+
+  user         AppUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_sessions")
+}
+
+// ─── Audit Log (security / compliance) ────────────────────────
+model AuditLog {
+  id           String   @id @default(cuid())
+  userId       String?
+  workspaceId  String?
+  action       String   // e.g. "gateway.create", "invoice.mark_paid", "login.success"
+  entity       String?
+  entityId     String?
+  metadata     String?  // JSON string
+  ipAddress    String?
+  createdAt    DateTime @default(now())
+
+  user         AppUser?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  workspace    Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([workspaceId])
+  @@index([action])
+  @@map("audit_logs")
+}
+
+// ─── Subscriptions (recurring billing) ────────────────────────
+model Subscription {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  clientId        String?
+  planName        String
+  amountCents     Int
+  currency        String   @default("USD")
+  status          String   @default("active") // active | past_due | canceled | paused | trialing
+  cycle           String   @default("monthly") // monthly | quarterly | yearly
+  gatewayId       String?
+  gatewaySlug     String?
+  nextBillingAt   DateTime?
+  startedAt       DateTime @default(now())
+  canceledAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace       Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client          Client?            @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  gateway         GatewayCredential? @relation(fields: [gatewayId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([clientId])
+  @@index([status])
+  @@map("subscriptions")
+}
+
+// ─── Automation Rules ─────────────────────────────────────────
+model AutomationRule {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  name            String
+  trigger         String   // e.g. "payment_intent.failed", "invoice.overdue"
+  action          String   // e.g. "Retry payment after 24 hours"
+  gatewaySlug     String?
+  status          String   @default("active") // active | paused
+  executions      Int      @default(0)
+  lastRunAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([status])
+  @@map("automation_rules")
+}
+
+// ─── Onboarding Progress ──────────────────────────────────────
+model OnboardingProgress {
+  id              String   @id @default(cuid())
+  workspaceId     String   @unique
+  stepGateway     Boolean  @default(false)
+  stepBrand       Boolean  @default(false)
+  stepClient      Boolean  @default(false)
+  stepInvoice     Boolean  @default(false)
+  walkthroughSkipped Boolean @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("onboarding_progress")
+}

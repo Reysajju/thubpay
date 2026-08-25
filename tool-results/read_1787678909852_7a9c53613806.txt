@@ -1,0 +1,1650 @@
+     1→'use server';
+     2→
+     3→import { auth } from '@/lib/auth';
+     4→import { db } from '@/lib/db';
+     5→import { encryptSecret } from '@/lib/crypto';
+     6→import { revalidatePath } from 'next/cache';
+     7→import { redirect } from 'next/navigation';
+     8→
+     9→// ─── Workspace context ────────────────────────────────────────
+    10→
+    11→async function getWorkspaceContext() {
+    12→  const session = await auth();
+    13→  if (!session?.user) return null;
+    14→
+    15→  const userId = (session.user as any).id as string | undefined;
+    16→  if (!userId) return null;
+    17→
+    18→  const membership = await db.workspaceMember.findFirst({
+    19→    where: { userId },
+    20→    include: { workspace: true },
+    21→    orderBy: { createdAt: 'asc' },
+    22→  });
+    23→  if (!membership) return null;
+    24→
+    25→  return {
+    26→    user: {
+    27→      id: userId,
+    28→      email: session.user.email || '',
+    29→      name: session.user.name || '',
+    30→      role: membership.role || 'owner',
+    31→    },
+    32→    workspaceId: membership.workspaceId,
+    33→    workspace: membership.workspace,
+    34→  };
+    35→}
+    36→
+    37→// ─── CREATE BRAND (workspace branding update) ─────────────────
+    38→
+    39→export async function createBrand(formData: FormData) {
+    40→  const ctx = await getWorkspaceContext();
+    41→  if (!ctx) return;
+    42→
+    43→  const name = String(formData.get('name') ?? '').trim();
+    44→  if (name) {
+    45→    await db.workspace.update({
+    46→      where: { id: ctx.workspaceId },
+    47→      data: { name },
+    48→    });
+    49→    // Auto-complete onboarding step
+    50→    await db.onboardingProgress.upsert({
+    51→      where: { workspaceId: ctx.workspaceId },
+    52→      update: { stepBrand: true },
+    53→      create: { workspaceId: ctx.workspaceId, stepBrand: true },
+    54→    });
+    55→  }
+    56→  revalidatePath('/dashboard');
+    57→  revalidatePath('/dashboard/settings');
+    58→}
+    59→
+    60→// ─── CREATE CLIENT ─────────────────────────────────────────────
+    61→
+    62→export async function createPortalClient(formData: FormData) {
+    63→  const ctx = await getWorkspaceContext();
+    64→  if (!ctx) return;
+    65→
+    66→  const name = String(formData.get('name') ?? '').trim();
+    67→  const email = String(formData.get('email') ?? '').trim() || null;
+    68→  const phone = String(formData.get('phone') ?? '').trim() || null;
+    69→  const company = String(formData.get('company') ?? '').trim() || null;
+    70→
+    71→  if (!name) return;
+    72→
+    73→  await db.client.create({
+    74→    data: {
+    75→      workspaceId: ctx.workspaceId,
+    76→      name,
+    77→      email,
+    78→      phone,
+    79→      company,
+    80→    },
+    81→  });
+    82→
+    83→  // Auto-complete onboarding step
+    84→  await db.onboardingProgress.upsert({
+    85→    where: { workspaceId: ctx.workspaceId },
+    86→    update: { stepClient: true },
+    87→    create: { workspaceId: ctx.workspaceId, stepClient: true },
+    88→  });
+    89→
+    90→  revalidatePath('/dashboard');
+    91→  revalidatePath('/dashboard/customers');
+    92→}
+    93→
+    94→// ─── CREATE INVOICE ────────────────────────────────────────────
+    95→
+    96→export async function createInvoice(formData: FormData) {
+    97→  const ctx = await getWorkspaceContext();
+    98→  if (!ctx) return;
+    99→
+   100→  const clientId = String(formData.get('client_id') ?? '').trim();
+   101→  const amount = Number(formData.get('total_usd') ?? 0);
+   102→  const taxRate = Number(formData.get('tax_rate_pct') ?? 0);
+   103→  const dueDateRaw = String(formData.get('due_date') ?? '').trim();
+   104→  const notes = String(formData.get('notes') ?? '').trim() || null;
+   105→  const description = String(formData.get('description') ?? '').trim();
+   106→  const gatewaySlug = String(formData.get('gateway_slug') ?? '').trim() || null;
+   107→
+   108→  if (!clientId || !Number.isFinite(amount) || amount <= 0) {
+   109→    return;
+   110→  }
+   111→
+   112→  const subtotalCents = Math.round(amount * 100);
+   113→  const taxCents = Math.round(subtotalCents * (taxRate / 100));
+   114→  const totalCents = subtotalCents + taxCents;
+   115→
+   116→  // Generate invoice number: INV-YYYY-NNN
+   117→  const year = new Date().getFullYear();
+   118→  const count = await db.invoice.count({
+   119→    where: {
+   120→      workspaceId: ctx.workspaceId,
+   121→      invoiceNumber: { startsWith: `INV-${year}-` },
+   122→    },
+   123→  });
+   124→  const invoiceNumber = `INV-${year}-${String(count + 1).padStart(3, '0')}`;
+   125→
+   126→  const invoice = await db.invoice.create({
+   127→    data: {
+   128→      workspaceId: ctx.workspaceId,
+   129→      clientId,
+   130→      invoiceNumber,
+   131→      status: 'draft',
+   132→      totalCents,
+   133→      currency: ctx.workspace.baseCurrency || 'USD',
+   134→      dueDate: dueDateRaw ? new Date(dueDateRaw) : null,
+   135→      notes: notes || description || null,
+   136→      customPaymentGateway: gatewaySlug || null,
+   137→      // Generate the link-tracking token at creation time so the tracking
+   138→      // pixel can fire the moment the invoice is dispatched.
+   139→      trackingToken: await import('crypto').then((c) => c.randomBytes(16).toString('hex')),
+   140→    },
+   141→  });
+   142→
+   143→  // Auto-complete onboarding step
+   144→  await db.onboardingProgress.upsert({
+   145→    where: { workspaceId: ctx.workspaceId },
+   146→    update: { stepInvoice: true },
+   147→    create: { workspaceId: ctx.workspaceId, stepInvoice: true },
+   148→  });
+   149→
+   150→  revalidatePath('/dashboard');
+   151→  revalidatePath('/dashboard/transactions');
+   152→  redirect(`/invoice/${invoice.id}`);
+   153→}
+   154→
+   155→// ─── DISPATCH INVOICE (mark as sent) ──────────────────────────
+   156→
+   157→export async function dispatchInvoice(formData: FormData) {
+   158→  const ctx = await getWorkspaceContext();
+   159→  if (!ctx) return;
+   160→
+   161→  const invoiceId = String(formData.get('invoice_id') ?? '').trim();
+   162→  if (!invoiceId) return;
+   163→
+   164→  // Verify the invoice belongs to this workspace before mutating.
+   165→  const invoice = await db.invoice.findFirst({
+   166→    where: { id: invoiceId, workspaceId: ctx.workspaceId },
+   167→    include: { client: true, workspace: true },
+   168→  });
+   169→  if (!invoice) return;
+   170→
+   171→  // Generate a tracking token if the invoice doesn't have one yet.
+   172→  const trackingToken =
+   173→    invoice.trackingToken ??
+   174→    (await import('crypto').then((c) => c.randomBytes(16).toString('hex')));
+   175→
+   176→  if (invoice.status === 'draft') {
+   177→    await db.invoice.update({
+   178→      where: { id: invoiceId },
+   179→      data: {
+   180→        status: 'sent',
+   181→        sentAt: invoice.sentAt ?? new Date(),
+   182→        trackingToken,
+   183→      },
+   184→    });
+   185→  } else if (!invoice.trackingToken || !invoice.sentAt) {
+   186→    await db.invoice.update({
+   187→      where: { id: invoiceId },
+   188→      data: {
+   189→        sentAt: invoice.sentAt ?? new Date(),
+   190→        trackingToken,
+   191→      },
+   192→    });
+   193→  }
+   194→
+   195→  // Send real email if client email is available
+   196→  if (invoice.client?.email) {
+   197→    const { sendInvoiceEmail } = await import('@/lib/email');
+   198→    const paymentUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/pay/${invoice.id}`;
+   199→    await sendInvoiceEmail({
+   200→      to: invoice.client.email,
+   201→      invoiceNumber: invoice.invoiceNumber || invoice.id.slice(0, 8),
+   202→      amountFormatted: `$${((invoice.totalCents || 0) / 100).toFixed(2)}`,
+   203→      paymentUrl,
+   204→      clientName: invoice.client.name,
+   205→      businessName: invoice.workspace?.name || 'ThubPay',
+   206→    }).catch((err) => console.error('[dispatchInvoice email error]:', err));
+   207→  }
+   208→
+   209→  // Record a notification with payment link
+   210→  const paymentLink = `/pay/${invoiceId}`;
+   211→  await db.notification.create({
+   212→    data: {
+   213→      workspaceId: ctx.workspaceId,
+   214→      title: 'Invoice sent to client',
+   215→      body: `${invoice.invoiceNumber || invoiceId} has been dispatched. Payment link: ${paymentLink}`,
+   216→      type: 'success',
+   217→    },
+   218→  });
+   219→
+   220→  revalidatePath(`/invoice/${invoiceId}`);
+   221→  revalidatePath('/dashboard');
+   222→  revalidatePath('/dashboard/transactions');
+   223→  revalidatePath('/dashboard/link-tracking');
+   224→}
+   225→
+   226→// ─── QUICK PAYMENT LINK GENERATOR ──────────────────────────────
+   227→
+   228→export async function createPaymentLinkQuick(formData: FormData) {
+   229→  const ctx = await getWorkspaceContext();
+   230→  if (!ctx) return { success: false, error: 'Unauthorized' };
+   231→
+   232→  const title = String(formData.get('title') ?? '').trim();
+   233→  const amountUsd = Number(formData.get('amount_usd') ?? 0);
+   234→  const clientIdRaw = String(formData.get('client_id') ?? '').trim();
+   235→  const notes = String(formData.get('notes') ?? '').trim();
+   236→
+   237→  if (!title || !Number.isFinite(amountUsd) || amountUsd <= 0) {
+   238→    return { success: false, error: 'Title and positive amount required' };
+   239→  }
+   240→
+   241→  const totalCents = Math.round(amountUsd * 100);
+   242→  const year = new Date().getFullYear();
+   243→  const count = await db.invoice.count({
+   244→    where: {
+   245→      workspaceId: ctx.workspaceId,
+   246→      invoiceNumber: { startsWith: `LNK-${year}-` },
+   247→    },
+   248→  });
+   249→  const invoiceNumber = `LNK-${year}-${String(count + 1).padStart(3, '0')}`;
+   250→  const trackingToken = await import('crypto').then((c) => c.randomBytes(16).toString('hex'));
+   251→
+   252→  let clientId: string | null = clientIdRaw || null;
+   253→  if (!clientId) {
+   254→    // Check if open link client exists or find first client
+   255→    const existingClient = await db.client.findFirst({
+   256→      where: { workspaceId: ctx.workspaceId },
+   257→    });
+   258→    if (existingClient) {
+   259→      clientId = existingClient.id;
+   260→    } else {
+   261→      const newClient = await db.client.create({
+   262→        data: {
+   263→          workspaceId: ctx.workspaceId,
+   264→          name: 'Direct Link Customer',
+   265→          email: null,
+   266→        },
+   267→      });
+   268→      clientId = newClient.id;
+   269→    }
+   270→  }
+   271→
+   272→  const invoice = await db.invoice.create({
+   273→    data: {
+   274→      workspaceId: ctx.workspaceId,
+   275→      clientId,
+   276→      invoiceNumber,
+   277→      status: 'sent',
+   278→      sentAt: new Date(),
+   279→      totalCents,
+   280→      currency: ctx.workspace.baseCurrency || 'USD',
+   281→      notes: notes || title,
+   282→      trackingToken,
+   283→    },
+   284→  });
+   285→
+   286→  revalidatePath('/dashboard');
+   287→  revalidatePath('/dashboard/transactions');
+   288→  revalidatePath('/dashboard/link-tracking');
+   289→
+   290→  return {
+   291→    success: true,
+   292→    invoiceId: invoice.id,
+   293→    paymentUrl: `/pay/${invoice.id}`,
+   294→    invoiceNumber: invoice.invoiceNumber,
+   295→  };
+   296→}
+   297→
+   298→// ─── LEGACY createPaymentLink (alias for dispatch) ─────────────
+   299→
+   300→export async function createPaymentLink(formData: FormData) {
+   301→  return dispatchInvoice(formData);
+   302→}
+   303→
+   304→// ─── SEND INVOICE (alias) ──────────────────────────────────────
+   305→
+   306→export async function sendInvoice(formData: FormData) {
+   307→  return dispatchInvoice(formData);
+   308→}
+   309→
+   310→// ─── CASH LEDGER ENTRY (manual ledger note — stored as a notification for now) ──
+   311→
+   312→export async function addLedgerEntry(formData: FormData) {
+   313→  const ctx = await getWorkspaceContext();
+   314→  if (!ctx) return;
+   315→
+   316→  const note = String(formData.get('note') ?? '').trim();
+   317→  const direction = String(formData.get('direction') ?? 'incoming');
+   318→  const amount = Number(formData.get('amount') ?? 0);
+   319→
+   320→  if (!note || !Number.isFinite(amount) || amount <= 0) return;
+   321→
+   322→  await db.notification.create({
+   323→    data: {
+   324→      workspaceId: ctx.workspaceId,
+   325→      title: `Ledger entry: ${direction}`,
+   326→      body: `${direction === 'incoming' ? '+' : '-'}$${(amount / 100).toFixed(2)} — ${note}`,
+   327→      type: direction === 'incoming' ? 'payment' : 'info',
+   328→    },
+   329→  });
+   330→
+   331→  revalidatePath('/dashboard');
+   332→  revalidatePath('/dashboard/finance');
+   333→}
+   334→
+   335→// ─── WORKSPACE MEMBERS ─────────────────────────────────────────
+   336→
+   337→export async function addWorkspaceMember(formData: FormData) {
+   338→  const ctx = await getWorkspaceContext();
+   339→  if (!ctx) return;
+   340→  if (ctx.user.role !== 'owner' && ctx.user.role !== 'admin') return;
+   341→
+   342→  const email = String(formData.get('email') ?? '').trim().toLowerCase();
+   343→  const role = String(formData.get('role') ?? 'member').trim();
+   344→
+   345→  if (!email) return;
+   346→
+   347→  const targetUser = await db.appUser.findUnique({ where: { email } });
+   348→  if (!targetUser) {
+   349→    // In production: send invite email. For now, no-op.
+   350→    return;
+   351→  }
+   352→
+   353→  const existing = await db.workspaceMember.findUnique({
+   354→    where: {
+   355→      workspaceId_userId: { workspaceId: ctx.workspaceId, userId: targetUser.id },
+   356→    },
+   357→  });
+   358→  if (existing) return;
+   359→
+   360→  await db.workspaceMember.create({
+   361→    data: {
+   362→      workspaceId: ctx.workspaceId,
+   363→      userId: targetUser.id,
+   364→      role: ['owner', 'admin', 'member', 'viewer'].includes(role) ? role : 'member',
+   365→    },
+   366→  });
+   367→
+   368→  revalidatePath('/dashboard');
+   369→  revalidatePath('/dashboard/settings');
+   370→}
+   371→
+   372→// ─── WORKSPACE PREFERENCES ─────────────────────────────────────
+   373→
+   374→export async function setMonthlyTarget(formData: FormData) {
+   375→  const ctx = await getWorkspaceContext();
+   376→  if (!ctx) return;
+   377→
+   378→  const targetUsd = Number(formData.get('monthly_target_usd') ?? 0);
+   379→  if (!Number.isFinite(targetUsd) || targetUsd < 0) return;
+   380→
+   381→  await db.workspace.update({
+   382→    where: { id: ctx.workspaceId },
+   383→    data: { monthlyTargetCents: Math.round(targetUsd * 100) },
+   384→  });
+   385→
+   386→  revalidatePath('/dashboard');
+   387→}
+   388→
+   389→// ─── MANUAL PAID OVERRIDE ──────────────────────────────────────
+   390→
+   391→export async function markInvoicePaidManually(invoiceId: string) {
+   392→  const ctx = await getWorkspaceContext();
+   393→  if (!ctx) return { success: false, error: 'Unauthorized' };
+   394→
+   395→  const invoice = await db.invoice.findFirst({
+   396→    where: { id: invoiceId, workspaceId: ctx.workspaceId },
+   397→    include: { client: true },
+   398→  });
+   399→  if (!invoice) return { success: false, error: 'Invoice not found' };
+   400→
+   401→  if (invoice.status === 'paid') {
+   402→    return { success: true, alreadyPaid: true };
+   403→  }
+   404→
+   405→  await db.$transaction(async (prisma) => {
+   406→    await prisma.invoice.update({
+   407→      where: { id: invoiceId },
+   408→      data: {
+   409→        status: 'paid',
+   410→        paidAt: new Date(),
+   411→        paidViaGateway: invoice.paidViaGateway || 'manual',
+   412→        customPaymentGateway: invoice.customPaymentGateway || 'Manual',
+   413→      },
+   414→    });
+   415→
+   416→    // Update client aggregates
+   417→    if (invoice.clientId) {
+   418→      await prisma.client.update({
+   419→        where: { id: invoice.clientId },
+   420→        data: {
+   421→          totalSpendCents: { increment: invoice.totalCents },
+   422→          transactionCount: { increment: 1 },
+   423→        },
+   424→      });
+   425→    }
+   426→
+   427→    // Record a transaction for analytics
+   428→    await prisma.transaction.create({
+   429→      data: {
+   430→        workspaceId: ctx.workspaceId,
+   431→        invoiceId,
+   432→        gatewaySlug: 'manual',
+   433→        externalId: `manual_${Date.now()}`,
+   434→        amountCents: invoice.totalCents,
+   435→        currency: invoice.currency,
+   436→        status: 'succeeded',
+   437→        customerEmail: invoice.client?.email || null,
+   438→        customerName: invoice.client?.name || null,
+   439→      },
+   440→    });
+   441→
+   442→    // Notification
+   443→    await prisma.notification.create({
+   444→      data: {
+   445→        workspaceId: ctx.workspaceId,
+   446→        title: 'Payment recorded',
+   447→        body: `${invoice.invoiceNumber || invoiceId} marked as paid manually ($${(invoice.totalCents / 100).toFixed(2)}).`,
+   448→        type: 'payment',
+   449→      },
+   450→    });
+   451→
+   452→    // Audit log entry for the manual mark-paid
+   453→    await prisma.auditLog.create({
+   454→      data: {
+   455→        workspaceId: ctx.workspaceId,
+   456→        userId: ctx.user.id,
+   457→        action: 'invoice.mark_paid',
+   458→        entity: 'invoice',
+   459→        entityId: invoiceId,
+   460→        metadata: JSON.stringify({
+   461→          invoiceNumber: invoice.invoiceNumber,
+   462→          amountCents: invoice.totalCents,
+   463→          currency: invoice.currency,
+   464→          method: 'manual',
+   465→          clientId: invoice.clientId,
+   466→        }),
+   467→      },
+   468→    });
+   469→  });
+   470→
+   471→  revalidatePath('/dashboard');
+   472→  revalidatePath(`/invoice/${invoiceId}`);
+   473→  revalidatePath('/dashboard/transactions');
+   474→  revalidatePath('/dashboard/customers');
+   475→  revalidatePath('/dashboard/audit-log');
+   476→  return { success: true };
+   477→}
+   478→
+   479→// ─── VOID / CANCEL INVOICE ─────────────────────────────────────
+   480→
+   481→export async function voidInvoice(
+   482→  invoiceId: string
+   483→): Promise<{ success: boolean; error?: string }> {
+   484→  const ctx = await getWorkspaceContext();
+   485→  if (!ctx) return { success: false, error: 'Unauthorized' };
+   486→
+   487→  if (!invoiceId) return { success: false, error: 'Invoice ID is required' };
+   488→
+   489→  const invoice = await db.invoice.findFirst({
+   490→    where: { id: invoiceId, workspaceId: ctx.workspaceId },
+   491→    include: { client: true },
+   492→  });
+   493→  if (!invoice) return { success: false, error: 'Invoice not found' };
+   494→
+   495→  // Already void — idempotent.
+   496→  if (invoice.status === 'void') {
+   497→    return { success: true };
+   498→  }
+   499→
+   500→  // Paid invoices cannot be voided directly — the merchant must refund
+   501→  // the transaction first (which reverts status to 'sent').
+   502→  if (invoice.status === 'paid') {
+   503→    return {
+   504→      success: false,
+   505→      error:
+   506→        'Cannot void a paid invoice. Please refund the payment first, then void the invoice.',
+   507→    };
+   508→  }
+   509→
+   510→  await db.$transaction(async (prisma) => {
+   511→    await prisma.invoice.update({
+   512→      where: { id: invoiceId },
+   513→      data: { status: 'void' },
+   514→    });
+   515→
+   516→    // Drop an audit notification
+   517→    await prisma.notification.create({
+   518→      data: {
+   519→        workspaceId: ctx.workspaceId,
+   520→        title: 'Invoice voided',
+   521→        body: `${invoice.invoiceNumber || invoiceId.slice(0, 8)} was voided. The payment link is no longer active.`,
+   522→        type: 'warning',
+   523→      },
+   524→    });
+   525→
+   526→    // Audit log entry
+   527→    await prisma.auditLog.create({
+   528→      data: {
+   529→        workspaceId: ctx.workspaceId,
+   530→        userId: ctx.user.id,
+   531→        action: 'invoice.void',
+   532→        entity: 'invoice',
+   533→        entityId: invoiceId,
+   534→        metadata: JSON.stringify({
+   535→          invoiceNumber: invoice.invoiceNumber,
+   536→          previousStatus: invoice.status,
+   537→          amountCents: invoice.totalCents,
+   538→        }),
+   539→      },
+   540→    });
+   541→  });
+   542→
+   543→  revalidatePath('/dashboard');
+   544→  revalidatePath(`/invoice/${invoiceId}`);
+   545→  revalidatePath('/dashboard/transactions');
+   546→  revalidatePath('/dashboard/link-tracking');
+   547→  revalidatePath('/dashboard/audit-log');
+   548→
+   549→  // ── Email the customer an invoice-cancelled notification (best-effort) ──
+   550→  // Only send if the customer has an email on file.
+   551→  const customerEmail = invoice.client?.email || '';
+   552→  if (customerEmail) {
+   553→    const amountFormatted = new Intl.NumberFormat('en-US', {
+   554→      style: 'currency',
+   555→      currency: (invoice.currency || 'USD').toUpperCase(),
+   556→    }).format(invoice.totalCents / 100);
+   557→    const invoiceNumber = invoice.invoiceNumber || invoiceId.slice(0, 8);
+   558→    const invoiceUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/invoice/${invoiceId}`;
+   559→
+   560→    import('@/lib/email')
+   561→      .then((m) =>
+   562→        m.sendInvoiceVoidedEmail({
+   563→          to: customerEmail,
+   564→          clientName: invoice.client?.name || undefined,
+   565→          invoiceNumber,
+   566→          amountFormatted,
+   567→          merchantName: ctx.workspace.name || undefined,
+   568→          invoiceUrl,
+   569→        })
+   570→      )
+   571→      .then((res) => {
+   572→        if (res.simulated) {
+   573→          console.log(`[voidInvoice] Cancellation email simulated for ${customerEmail}`);
+   574→        } else if (!res.success) {
+   575→          console.warn(`[voidInvoice] Cancellation email failed for ${customerEmail}:`, res.error);
+   576→        } else {
+   577→          console.log(`[voidInvoice] Cancellation email sent to ${customerEmail}`);
+   578→        }
+   579→      })
+   580→      .catch((err) => console.warn('[voidInvoice] Cancellation email error:', err));
+   581→  }
+   582→
+   583→  return { success: true };
+   584→}
+   585→
+   586→// ─── BULK VOID INVOICES ─────────────────────────────────────────
+   587→
+   588→export async function bulkVoidInvoices(
+   589→  invoiceIds: string[]
+   590→): Promise<{ success: boolean; voided: number; skipped: number; errors: string[] }> {
+   591→  const ctx = await getWorkspaceContext();
+   592→  if (!ctx) {
+   593→    return { success: false, voided: 0, skipped: 0, errors: ['Unauthorized'] };
+   594→  }
+   595→
+   596→  if (!Array.isArray(invoiceIds) || invoiceIds.length === 0) {
+   597→    return { success: false, voided: 0, skipped: 0, errors: ['No invoices selected'] };
+   598→  }
+   599→
+   600→  // Cap at 50 per batch to prevent abuse.
+   601→  const ids = invoiceIds.slice(0, 50);
+   602→  const errors: string[] = [];
+   603→  let voided = 0;
+   604→  let skipped = 0;
+   605→
+   606→  // Fetch all the invoices in one query (scoped to this workspace).
+   607→  const invoices = await db.invoice.findMany({
+   608→    where: {
+   609→      id: { in: ids },
+   610→      workspaceId: ctx.workspaceId,
+   611→    },
+   612→    include: { client: true },
+   613→  });
+   614→
+   615→  for (const invoice of invoices) {
+   616→    // Already void — skip.
+   617→    if (invoice.status === 'void') {
+   618→      skipped++;
+   619→      continue;
+   620→    }
+   621→    // Paid invoices cannot be voided.
+   622→    if (invoice.status === 'paid') {
+   623→      skipped++;
+   624→      errors.push(`${invoice.invoiceNumber || invoice.id.slice(0, 8)}: paid (refund first)`);
+   625→      continue;
+   626→    }
+   627→
+   628→    try {
+   629→      await db.invoice.update({
+   630→        where: { id: invoice.id },
+   631→        data: { status: 'void' },
+   632→      });
+   633→
+   634→      // Email the customer (best-effort, non-blocking).
+   635→      const customerEmail = invoice.client?.email || '';
+   636→      if (customerEmail) {
+   637→        const amountFormatted = new Intl.NumberFormat('en-US', {
+   638→          style: 'currency',
+   639→          currency: (invoice.currency || 'USD').toUpperCase(),
+   640→        }).format(invoice.totalCents / 100);
+   641→        const invoiceNumber = invoice.invoiceNumber || invoice.id.slice(0, 8);
+   642→        const invoiceUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/invoice/${invoice.id}`;
+   643→
+   644→        import('@/lib/email')
+   645→          .then((m) =>
+   646→            m.sendInvoiceVoidedEmail({
+   647→              to: customerEmail,
+   648→              clientName: invoice.client?.name || undefined,
+   649→              invoiceNumber,
+   650→              amountFormatted,
+   651→              merchantName: ctx.workspace.name || undefined,
+   652→              invoiceUrl,
+   653→            })
+   654→          )
+   655→          .catch(() => {
+   656→            /* non-fatal */
+   657→          });
+   658→      }
+   659→      voided++;
+   660→    } catch (err) {
+   661→      errors.push(
+   662→        `${invoice.invoiceNumber || invoice.id.slice(0, 8)}: ${err instanceof Error ? err.message : 'unknown error'}`
+   663→      );
+   664→    }
+   665→  }
+   666→
+   667→  // One aggregate audit notification.
+   668→  if (voided > 0) {
+   669→    await db.notification.create({
+   670→      data: {
+   671→        workspaceId: ctx.workspaceId,
+   672→        title: `${voided} invoice${voided === 1 ? '' : 's'} voided (bulk)`,
+   673→        body: `Bulk void action processed ${voided} invoice${voided === 1 ? '' : 's'}${skipped > 0 ? ` (${skipped} skipped)` : ''}.`,
+   674→        type: 'warning',
+   675→      },
+   676→    }).catch(() => {
+   677→      /* non-fatal */
+   678→    });
+   679→  }
+   680→
+   681→  revalidatePath('/dashboard');
+   682→  revalidatePath('/dashboard/link-tracking');
+   683→  revalidatePath('/dashboard/transactions');
+   684→  revalidatePath('/dashboard/audit-log');
+   685→  return { success: true, voided, skipped, errors };
+   686→}
+   687→
+   688→// ─── CHECKOUT SUBMISSIONS ──────────────────────────────────────
+   689→
+   690→export async function savePaymentSubmission({
+   691→  invoiceId,
+   692→  paymentIntentId,
+   693→  name,
+   694→  email,
+   695→  address,
+   696→}: {
+   697→  invoiceId: string;
+   698→  paymentIntentId: string;
+   699→  name: string;
+   700→  email: string;
+   701→  address: string;
+   702→}) {
+   703→  const ctx = await getWorkspaceContext();
+   704→  if (!ctx) return { success: false, error: 'Unauthorized' };
+   705→
+   706→  // Persist the checkout submission as a notification (audit trail)
+   707→  await db.notification.create({
+   708→    data: {
+   709→      workspaceId: ctx.workspaceId,
+   710→      title: 'Checkout submission received',
+   711→      body: `Intent ${paymentIntentId} for invoice ${invoiceId} — ${name} <${email}>`,
+   712→      type: 'info',
+   713→    },
+   714→  });
+   715→
+   716→  return { success: true };
+   717→}
+   718→
+   719→// ─── GATEWAY CREDENTIALS MANAGEMENT ──────────────────────────
+   720→
+   721→export async function addGatewayCredential(formData: FormData) {
+   722→  const ctx = await getWorkspaceContext();
+   723→  if (!ctx) return { success: false, error: 'Unauthorized' };
+   724→
+   725→  const gatewaySlug = String(formData.get('gateway_slug') ?? '').trim();
+   726→  const label = String(formData.get('label') ?? '').trim();
+   727→  const secretKey = String(formData.get('secret_key') ?? '').trim();
+   728→  const publishableKey = String(formData.get('publishable_key') ?? '').trim() || null;
+   729→  const webhookSecret = String(formData.get('webhook_secret') ?? '').trim() || null;
+   730→  const mode = String(formData.get('mode') ?? 'test').trim() === 'live' ? 'live' : 'test';
+   731→  const isDefault = formData.get('is_default') === 'on' || formData.get('is_default') === 'true';
+   732→
+   733→  if (!gatewaySlug || !label || !secretKey) {
+   734→    return { success: false, error: 'Missing required fields (gateway_slug, label, secret_key)' };
+   735→  }
+   736→
+   737→  // If marking as default, unset other defaults in the same workspace.
+   738→  if (isDefault) {
+   739→    await db.gatewayCredential.updateMany({
+   740→      where: { workspaceId: ctx.workspaceId, isDefault: true },
+   741→      data: { isDefault: false },
+   742→    });
+   743→  }
+   744→
+   745→  await db.gatewayCredential.create({
+   746→    data: {
+   747→      workspaceId: ctx.workspaceId,
+   748→      gatewaySlug,
+   749→      label,
+   750→      publishableKey,
+   751→      secretKeyEnc: encryptSecret(secretKey),
+   752→      webhookSecret,
+   753→      mode,
+   754→      isActive: true,
+   755→      isDefault,
+   756→    },
+   757→  });
+   758→
+   759→  await db.notification.create({
+   760→    data: {
+   761→      workspaceId: ctx.workspaceId,
+   762→      title: 'Gateway connected',
+   763→      body: `${label} (${gatewaySlug}) is now ${isDefault ? 'the default gateway' : 'active'}.`,
+   764→      type: 'info',
+   765→    },
+   766→  });
+   767→
+   768→  // Auto-complete onboarding step
+   769→  await db.onboardingProgress.upsert({
+   770→    where: { workspaceId: ctx.workspaceId },
+   771→    update: { stepGateway: true },
+   772→    create: { workspaceId: ctx.workspaceId, stepGateway: true },
+   773→  });
+   774→
+   775→  revalidatePath('/dashboard/settings');
+   776→  revalidatePath('/dashboard/settings/gateways');
+   777→  revalidatePath('/dashboard/developers');
+   778→  return { success: true };
+   779→}
+   780→
+   781→export async function deleteGatewayCredential(id: string) {
+   782→  const ctx = await getWorkspaceContext();
+   783→  if (!ctx) return { success: false, error: 'Unauthorized' };
+   784→
+   785→  // Verify ownership
+   786→  const gw = await db.gatewayCredential.findFirst({
+   787→    where: { id, workspaceId: ctx.workspaceId },
+   788→  });
+   789→  if (!gw) return { success: false, error: 'Not found' };
+   790→
+   791→  await db.gatewayCredential.delete({ where: { id } });
+   792→
+   793→  revalidatePath('/dashboard/settings');
+   794→  revalidatePath('/dashboard/settings/gateways');
+   795→  revalidatePath('/dashboard/developers');
+   796→  return { success: true };
+   797→}
+   798→
+   799→// ─── GATEWAY TOGGLE / UPDATE ───────────────────────────────────
+   800→
+   801→export async function toggleGatewayActive(id: string, isActive: boolean) {
+   802→  const ctx = await getWorkspaceContext();
+   803→  if (!ctx) return { success: false, error: 'Unauthorized' };
+   804→
+   805→  const gw = await db.gatewayCredential.findFirst({
+   806→    where: { id, workspaceId: ctx.workspaceId },
+   807→  });
+   808→  if (!gw) return { success: false, error: 'Not found' };
+   809→
+   810→  await db.gatewayCredential.update({
+   811→    where: { id },
+   812→    data: { isActive },
+   813→  });
+   814→
+   815→  revalidatePath('/dashboard/settings');
+   816→  revalidatePath('/dashboard/settings/gateways');
+   817→  revalidatePath('/dashboard/developers');
+   818→  return { success: true };
+   819→}
+   820→
+   821→export async function setDefaultGateway(id: string) {
+   822→  const ctx = await getWorkspaceContext();
+   823→  if (!ctx) return { success: false, error: 'Unauthorized' };
+   824→
+   825→  const gw = await db.gatewayCredential.findFirst({
+   826→    where: { id, workspaceId: ctx.workspaceId },
+   827→  });
+   828→  if (!gw) return { success: false, error: 'Not found' };
+   829→
+   830→  // Unset other defaults
+   831→  await db.gatewayCredential.updateMany({
+   832→    where: { workspaceId: ctx.workspaceId, isDefault: true },
+   833→    data: { isDefault: false },
+   834→  });
+   835→
+   836→  await db.gatewayCredential.update({
+   837→    where: { id },
+   838→    data: { isDefault: true, isActive: true },
+   839→  });
+   840→
+   841→  revalidatePath('/dashboard/settings');
+   842→  revalidatePath('/dashboard/settings/gateways');
+   843→  revalidatePath('/dashboard/developers');
+   844→  return { success: true };
+   845→}
+   846→
+   847→// ─── DISMISS NOTIFICATION ──────────────────────────────────────
+   848→
+   849→export async function dismissNotification(id: string) {
+   850→  const ctx = await getWorkspaceContext();
+   851→  if (!ctx) return { success: false, error: 'Unauthorized' };
+   852→
+   853→  await db.notification.updateMany({
+   854→    where: { id, workspaceId: ctx.workspaceId },
+   855→    data: { isRead: true },
+   856→  });
+   857→
+   858→  revalidatePath('/dashboard');
+   859→  return { success: true };
+   860→}
+   861→
+   862→// ─── PROCESS REFUND ────────────────────────────────────────────
+   863→
+   864→export async function processRefund(
+   865→  transactionId: string,
+   866→  amountCents: number,
+   867→  reason: string
+   868→): Promise<{ success: boolean; error?: string; refundId?: string }> {
+   869→  const ctx = await getWorkspaceContext();
+   870→  if (!ctx) return { success: false, error: 'Unauthorized' };
+   871→
+   872→  if (!transactionId || !Number.isFinite(amountCents) || amountCents <= 0) {
+   873→    return { success: false, error: 'Invalid transaction ID or amount' };
+   874→  }
+   875→
+   876→  // Fetch the transaction and verify ownership + that it's refundable.
+   877→  // Also fetch the client + workspace so we can email the customer a
+   878→  // refund notification with the merchant name.
+   879→  const tx = await db.transaction.findFirst({
+   880→    where: { id: transactionId, workspaceId: ctx.workspaceId },
+   881→    include: {
+   882→      gateway: true,
+   883→      invoice: {
+   884→        include: {
+   885→          client: true,
+   886→          workspace: { select: { name: true } },
+   887→        },
+   888→      },
+   889→    },
+   890→  });
+   891→
+   892→  if (!tx) return { success: false, error: 'Transaction not found' };
+   893→  if (tx.status !== 'succeeded') {
+   894→    return { success: false, error: 'Only succeeded transactions can be refunded' };
+   895→  }
+   896→  if (amountCents > tx.amountCents) {
+   897→    return { success: false, error: 'Refund amount cannot exceed the original transaction amount' };
+   898→  }
+   899→
+   900→  // Resolve the gateway adapter and call its refund method (if implemented).
+   901→  const { getAdapter } = await import('@/lib/gateways');
+   902→  const adapter = getAdapter(tx.gatewaySlug as any);
+   903→
+   904→  if (!adapter?.refund) {
+   905→    return { success: false, error: `Refunds are not supported for gateway: ${tx.gatewaySlug}` };
+   906→  }
+   907→
+   908→  const credential = {
+   909→    id: tx.gateway?.id || '',
+   910→    gatewaySlug: tx.gatewaySlug,
+   911→    label: tx.gateway?.label || '',
+   912→    publishableKey: tx.gateway?.publishableKey || null,
+   913→    secretKey: tx.gateway?.secretKeyEnc || null,
+   914→    webhookSecret: tx.gateway?.webhookSecret || null,
+   915→    mode: tx.gateway?.mode || 'test',
+   916→    metadata: tx.gateway?.metadata ? JSON.parse(tx.gateway.metadata) : null,
+   917→  };
+   918→
+   919→  const refundResult = await adapter.refund(
+   920→    credential,
+   921→    tx.externalId || tx.id,
+   922→    amountCents,
+   923→    reason
+   924→  );
+   925→
+   926→  if (refundResult.status === 'failed') {
+   927→    return { success: false, error: 'Refund failed at the gateway' };
+   928→  }
+   929→
+   930→  // Update transaction status, invoice status, client totals, notification, and audit log atomically
+   931→  const isFullRefund = amountCents >= tx.amountCents;
+   932→  await db.$transaction(async (prisma) => {
+   933→    await prisma.transaction.update({
+   934→      where: { id: transactionId },
+   935→      data: {
+   936→        status: isFullRefund ? 'refunded' : tx.status,
+   937→        failureReason: isFullRefund
+   938→          ? `Refunded: ${reason} (refund ID: ${refundResult.id})`
+   939→          : `Partially refunded ${amountCents} cents: ${reason} (refund ID: ${refundResult.id})`,
+   940→      },
+   941→    });
+   942→
+   943→    // If full refund, revert the invoice status + client totals.
+   944→    if (isFullRefund && tx.invoice) {
+   945→      await prisma.invoice.update({
+   946→        where: { id: tx.invoice.id },
+   947→        data: { status: 'sent' },
+   948→      });
+   949→      if (tx.invoice.clientId) {
+   950→        await prisma.client.update({
+   951→          where: { id: tx.invoice.clientId },
+   952→          data: {
+   953→            totalSpendCents: { decrement: tx.amountCents },
+   954→            transactionCount: { decrement: 1 },
+   955→          },
+   956→        });
+   957→      }
+   958→    }
+   959→
+   960→    // Record an audit notification.
+   961→    await prisma.notification.create({
+   962→      data: {
+   963→        workspaceId: ctx.workspaceId,
+   964→        title: isFullRefund ? 'Payment refunded' : 'Partial refund issued',
+   965→        body: `Refund of $${(amountCents / 100).toFixed(2)} processed for transaction ${tx.externalId || tx.id}. Reason: ${reason}`,
+   966→        type: 'warning',
+   967→      },
+   968→    });
+   969→
+   970→    // Record the refund as a webhook event for audit trail.
+   971→    await prisma.webhookEvent.create({
+   972→      data: {
+   973→        workspaceId: ctx.workspaceId,
+   974→        eventType: isFullRefund ? 'refund.created' : 'refund.partial',
+   975→        gateway: tx.gatewaySlug,
+   976→        status: 'success',
+   977→        payload: JSON.stringify({
+   978→          refundId: refundResult.id,
+   979→          originalTransactionId: tx.id,
+   980→          externalId: tx.externalId,
+   981→          amountCents,
+   982→          reason,
+   983→          raw: refundResult.raw,
+   984→        }),
+   985→      },
+   986→    });
+   987→
+   988→    // Audit log entry for the refund
+   989→    await prisma.auditLog.create({
+   990→      data: {
+   991→        workspaceId: ctx.workspaceId,
+   992→        userId: ctx.user.id,
+   993→        action: isFullRefund ? 'refund.created' : 'refund.partial',
+   994→        entity: 'transaction',
+   995→        entityId: transactionId,
+   996→        metadata: JSON.stringify({
+   997→          refundId: refundResult.id,
+   998→          invoiceId: tx.invoiceId,
+   999→          invoiceNumber: tx.invoice?.invoiceNumber,
+  1000→          amountCents,
+  1001→          reason,
+  1002→          isFullRefund,
+  1003→          gateway: tx.gatewaySlug,
+  1004→        }),
+  1005→      },
+  1006→    });
+  1007→  });
+  1008→
+  1009→  revalidatePath('/dashboard');
+  1010→  revalidatePath('/dashboard/transactions');
+  1011→  revalidatePath('/dashboard/audit-log');
+  1012→  revalidatePath(`/invoice/${tx.invoiceId || ''}`);
+  1013→
+  1014→  // ── Email the customer a refund notification (best-effort, non-blocking) ──
+  1015→  const refundEmail = tx.customerEmail || tx.invoice?.client?.email || '';
+  1016→  if (refundEmail) {
+  1017→    const amountFormatted = new Intl.NumberFormat('en-US', {
+  1018→      style: 'currency',
+  1019→      currency: (tx.currency || 'USD').toUpperCase(),
+  1020→    }).format(amountCents / 100);
+  1021→    const invoiceNumber = tx.invoice?.invoiceNumber || tx.invoiceId?.slice(0, 8) || transactionId.slice(0, 8);
+  1022→    const merchantName = tx.invoice?.workspace?.name;
+  1023→    const receiptUrl = tx.invoiceId
+  1024→      ? `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/pay/receipt/${tx.id}`
+  1025→      : undefined;
+  1026→
+  1027→    const safeInvoiceNo = invoiceNumber.replace(/[^a-zA-Z0-9-_]/g, '') || 'credit-note';
+  1028→
+  1029→    // Generate the credit note PDF + send the refund email in parallel
+  1030→    // (best-effort — if PDF generation fails, the email still sends
+  1031→    // with just the link).
+  1032→    Promise.all([
+  1033→      import('@/lib/email'),
+  1034→      import('@/lib/credit-note-pdf')
+  1035→        .then((m) =>
+  1036→          m.generateCreditNotePdf({
+  1037→            transaction: {
+  1038→              id: tx.id,
+  1039→              amountCents: tx.amountCents,
+  1040→              currency: tx.currency || 'USD',
+  1041→              gatewaySlug: tx.gatewaySlug,
+  1042→              customerEmail: refundEmail,
+  1043→              customerName: tx.customerName || tx.invoice?.client?.name || null,
+  1044→              createdAt: tx.createdAt,
+  1045→            },
+  1046→            invoice: {
+  1047→              id: tx.invoiceId || tx.invoice?.id || '',
+  1048→              invoiceNumber: tx.invoice?.invoiceNumber,
+  1049→              totalCents: tx.invoice?.totalCents || tx.amountCents,
+  1050→              currency: tx.invoice?.currency || tx.currency || 'USD',
+  1051→              paidAt: tx.invoice?.paidAt,
+  1052→              client: tx.invoice?.client,
+  1053→              workspace: tx.invoice?.workspace,
+  1054→            },
+  1055→            refundId: refundResult.id,
+  1056→            refundAmountCents: amountCents,
+  1057→            reason,
+  1058→            isFullRefund,
+  1059→            issuedAt: new Date(),
+  1060→          })
+  1061→        )
+  1062→        .then((buf) => ({
+  1063→          filename: `thubpay-credit-note-${safeInvoiceNo}.pdf`,
+  1064→          content: buf,
+  1065→        }))
+  1066→        .catch((err) => {
+  1067→          console.warn('[processRefund] Credit note PDF failed, sending email without attachment:', err);
+  1068→          return undefined;
+  1069→        }),
+  1070→    ])
+  1071→      .then(([emailMod, pdfAttachment]) =>
+  1072→        emailMod.sendRefundEmail({
+  1073→          to: refundEmail,
+  1074→          clientName: tx.customerName || tx.invoice?.client?.name || undefined,
+  1075→          invoiceNumber,
+  1076→          amountFormatted,
+  1077→          refundId: refundResult.id,
+  1078→          reason,
+  1079→          isFullRefund,
+  1080→          merchantName,
+  1081→          receiptUrl,
+  1082→          pdfAttachment: pdfAttachment || undefined,
+  1083→        })
+  1084→      )
+  1085→      .then((res) => {
+  1086→        if (res.simulated) {
+  1087→          console.log(`[processRefund] Refund email (with credit note) simulated for ${refundEmail}`);
+  1088→        } else if (!res.success) {
+  1089→          console.warn(`[processRefund] Refund email failed for ${refundEmail}:`, res.error);
+  1090→        } else {
+  1091→          console.log(`[processRefund] Refund email sent to ${refundEmail}`);
+  1092→        }
+  1093→      })
+  1094→      .catch((err) => console.warn('[processRefund] Refund email error:', err));
+  1095→  }
+  1096→
+  1097→  return { success: true, refundId: refundResult.id };
+  1098→}
+  1099→
+  1100→// ─── AUTO-REMINDER SWEEP (manual trigger from UI) ────────────
+  1101→
+  1102→export async function triggerReminderSweep() {
+  1103→  const ctx = await getWorkspaceContext();
+  1104→  if (!ctx) return { success: false, error: 'Unauthorized' };
+  1105→
+  1106→  const now = new Date();
+  1107→  const REMINDER_TIERS = [
+  1108→    { afterHours: 24, type: 'unviewed', label: 'reminder' },
+  1109→    { afterHours: 72, type: 'followup', label: 'follow-up' },
+  1110→    { afterHours: 168, type: 'final', label: 'final reminder' },
+  1111→  ] as const;
+  1112→
+  1113→  const result = {
+  1114→    scanned: 0,
+  1115→    remindersSent: 0,
+  1116→    byTier: { unviewed: 0, followup: 0, final: 0 } as Record<string, number>,
+  1117→    invoicesMarkedOverdue: 0,
+  1118→  };
+  1119→
+  1120→  const candidates = await db.invoice.findMany({
+  1121→    where: {
+  1122→      workspaceId: ctx.workspaceId,
+  1123→      sentAt: { not: null },
+  1124→      status: { in: ['sent', 'viewed', 'overdue'] },
+  1125→      firstViewedAt: null,
+  1126→    },
+  1127→    include: { client: true },
+  1128→  });
+  1129→  result.scanned = candidates.length;
+  1130→
+  1131→  for (const inv of candidates) {
+  1132→    if (!inv.sentAt) continue;
+  1133→    const hoursSinceSent = (now.getTime() - inv.sentAt.getTime()) / 3600000;
+  1134→
+  1135→    for (const tier of REMINDER_TIERS) {
+  1136→      if (hoursSinceSent < tier.afterHours) continue;
+  1137→      const already = await db.invoiceReminder.findFirst({
+  1138→        where: { invoiceId: inv.id, type: tier.type },
+  1139→        select: { id: true },
+  1140→      });
+  1141→      if (already) continue;
+  1142→
+  1143→      const invoiceLabel = inv.invoiceNumber || inv.id.slice(0, 8);
+  1144→      const clientLabel = inv.client?.name || inv.client?.email || 'your client';
+  1145→      const amount = new Intl.NumberFormat('en-US', {
+  1146→        style: 'currency',
+  1147→        currency: inv.currency || 'USD',
+  1148→      }).format(inv.totalCents / 100);
+  1149→      const daysSent = Math.floor(tier.afterHours / 24);
+  1150→
+  1151→      let message = '';
+  1152→      if (tier.type === 'unviewed') {
+  1153→        message = `${invoiceLabel} (${amount}) sent to ${clientLabel} hasn't been opened in 1 day. Consider following up.`;
+  1154→      } else if (tier.type === 'followup') {
+  1155→        message = `${invoiceLabel} (${amount}) is still unopened after ${daysSent} days. Time for a personal nudge.`;
+  1156→      } else {
+  1157→        message = `${invoiceLabel} (${amount}) is now ${daysSent} days past send and remains unopened. Marked as overdue.`;
+  1158→      }
+  1159→
+  1160→      await db.$transaction([
+  1161→        db.notification.create({
+  1162→          data: {
+  1163→            workspaceId: ctx.workspaceId,
+  1164→            title: `Invoice ${tier.label} — ${invoiceLabel}`,
+  1165→            body: message,
+  1166→            type: tier.type === 'final' ? 'warning' : 'info',
+  1167→          },
+  1168→        }),
+  1169→        db.invoiceReminder.create({
+  1170→          data: {
+  1171→            invoiceId: inv.id,
+  1172→            workspaceId: ctx.workspaceId,
+  1173→            type: tier.type,
+  1174→            message,
+  1175→          },
+  1176→        }),
+  1177→      ]);
+  1178→
+  1179→      result.remindersSent++;
+  1180→      result.byTier[tier.type]++;
+  1181→
+  1182→      if (tier.type === 'final' && inv.status !== 'overdue') {
+  1183→        await db.invoice.update({
+  1184→          where: { id: inv.id },
+  1185→          data: { status: 'overdue' },
+  1186→        });
+  1187→        result.invoicesMarkedOverdue++;
+  1188→      }
+  1189→    }
+  1190→  }
+  1191→
+  1192→  revalidatePath('/dashboard');
+  1193→  revalidatePath('/dashboard/link-tracking');
+  1194→  revalidatePath('/dashboard/transactions');
+  1195→  return { success: true, ...result };
+  1196→}
+  1197→
+  1198→// ─── WEBHOOK ENDPOINTS MANAGEMENT ────────────────────────────
+  1199→
+  1200→export async function addWebhookEndpoint(formData: FormData) {
+  1201→  const ctx = await getWorkspaceContext();
+  1202→  if (!ctx) return { success: false, error: 'Unauthorized' };
+  1203→
+  1204→  const label = String(formData.get('label') ?? '').trim();
+  1205→  const url = String(formData.get('url') ?? '').trim();
+  1206→  const secret = String(formData.get('secret') ?? '').trim() || null;
+  1207→  const eventsRaw = String(formData.get('events') ?? '').trim();
+  1208→  const isActive = formData.get('is_active') !== 'off';
+  1209→
+  1210→  if (!label || !url) {
+  1211→    return { success: false, error: 'Label and URL are required' };
+  1212→  }
+  1213→
+  1214→  // Validate URL — must be http(s)
+  1215→  try {
+  1216→    const parsed = new URL(url);
+  1217→    if (!['http:', 'https:'].includes(parsed.protocol)) {
+  1218→      return { success: false, error: 'URL must use http: or https: protocol' };
+  1219→    }
+  1220→  } catch {
+  1221→    return { success: false, error: 'Invalid URL format' };
+  1222→  }
+  1223→
+  1224→  // Normalize events: "*" or comma-separated list (e.g. "invoice.viewed,payment.succeeded" or "invoice.*")
+  1225→  const events = !eventsRaw || eventsRaw === '*' ? '*' : eventsRaw;
+  1226→
+  1227→  const endpoint = await db.webhookEndpoint.create({
+  1228→    data: {
+  1229→      workspaceId: ctx.workspaceId,
+  1230→      label,
+  1231→      url,
+  1232→      secret,
+  1233→      events,
+  1234→      isActive,
+  1235→    },
+  1236→  });
+  1237→
+  1238→  // ── Audit log entry for webhook endpoint creation ──
+  1239→  await db.auditLog.create({
+  1240→    data: {
+  1241→      workspaceId: ctx.workspaceId,
+  1242→      userId: ctx.user.id,
+  1243→      action: 'webhook.create',
+  1244→      entity: 'webhook_endpoint',
+  1245→      entityId: endpoint.id,
+  1246→      metadata: JSON.stringify({
+  1247→        label: endpoint.label,
+  1248→        url: endpoint.url,
+  1249→        events: endpoint.events,
+  1250→        isActive: endpoint.isActive,
+  1251→        hasSecret: Boolean(endpoint.secret),
+  1252→      }),
+  1253→    },
+  1254→  }).catch(() => {
+  1255→    /* non-fatal — audit log is best-effort */
+  1256→  });
+  1257→
+  1258→  revalidatePath('/dashboard/developers');
+  1259→  revalidatePath('/dashboard/audit-log');
+  1260→  return { success: true };
+  1261→}
+  1262→
+  1263→export async function deleteWebhookEndpoint(id: string) {
+  1264→  const ctx = await getWorkspaceContext();
+  1265→  if (!ctx) return { success: false, error: 'Unauthorized' };
+  1266→
+  1267→  // Verify ownership
+  1268→  const ep = await db.webhookEndpoint.findFirst({
+  1269→    where: { id, workspaceId: ctx.workspaceId },
+  1270→    select: { id: true, label: true, url: true },
+  1271→  });
+  1272→  if (!ep) return { success: false, error: 'Not found' };
+  1273→
+  1274→  await db.webhookEndpoint.delete({ where: { id } });
+  1275→
+  1276→  // ── Audit log entry for webhook endpoint deletion ──
+  1277→  await db.auditLog.create({
+  1278→    data: {
+  1279→      workspaceId: ctx.workspaceId,
+  1280→      userId: ctx.user.id,
+  1281→      action: 'webhook.delete',
+  1282→      entity: 'webhook_endpoint',
+  1283→      entityId: id,
+  1284→      metadata: JSON.stringify({
+  1285→        label: ep.label,
+  1286→        url: ep.url,
+  1287→      }),
+  1288→    },
+  1289→  }).catch(() => {
+  1290→    /* non-fatal — audit log is best-effort */
+  1291→  });
+  1292→
+  1293→  revalidatePath('/dashboard/developers');
+  1294→  revalidatePath('/dashboard/audit-log');
+  1295→  return { success: true };
+  1296→}
+  1297→
+  1298→export async function toggleWebhookEndpoint(id: string, isActive: boolean) {
+  1299→  const ctx = await getWorkspaceContext();
+  1300→  if (!ctx) return { success: false, error: 'Unauthorized' };
+  1301→
+  1302→  const ep = await db.webhookEndpoint.findFirst({
+  1303→    where: { id, workspaceId: ctx.workspaceId },
+  1304→    select: { id: true },
+  1305→  });
+  1306→  if (!ep) return { success: false, error: 'Not found' };
+  1307→
+  1308→  await db.webhookEndpoint.update({
+  1309→    where: { id },
+  1310→    data: { isActive },
+  1311→  });
+  1312→
+  1313→  revalidatePath('/dashboard/developers');
+  1314→  return { success: true };
+  1315→}
+  1316→
+  1317→// ─── TEST WEBHOOK ENDPOINT (manual ping) ────────────────────
+  1318→
+  1319→export async function testWebhookEndpoint(id: string) {
+  1320→  const ctx = await getWorkspaceContext();
+  1321→  if (!ctx) return { success: false, error: 'Unauthorized' };
+  1322→
+  1323→  const ep = await db.webhookEndpoint.findFirst({
+  1324→    where: { id, workspaceId: ctx.workspaceId },
+  1325→  });
+  1326→  if (!ep) return { success: false, error: 'Endpoint not found' };
+  1327→
+  1328→  // Create a synthetic "webhook.test" event and dispatch it
+  1329→  const testPayload = {
+  1330→    event: 'webhook.test',
+  1331→    timestamp: new Date().toISOString(),
+  1332→    data: {
+  1333→      endpoint_id: ep.id,
+  1334→      endpoint_label: ep.label,
+  1335→      message: 'This is a test event from ThubPay. Your webhook endpoint is correctly configured.',
+  1336→    },
+  1337→  };
+  1338→
+  1339→  const event = await db.webhookEvent.create({
+  1340→    data: {
+  1341→      workspaceId: ctx.workspaceId,
+  1342→      eventType: 'webhook.test',
+  1343→      gateway: null,
+  1344→      status: 'success',
+  1345→      payload: JSON.stringify(testPayload),
+  1346→    },
+  1347→  });
+  1348→
+  1349→  // Dispatch (the dispatcher filters by subscription — but we'll force-deliver
+  1350→  // by calling the dispatcher which handles subscription matching).
+  1351→  // Since "webhook.test" might not match the subscription filter, we'll do
+  1352→  // a direct fetch here as well for guaranteed delivery.
+  1353→  try {
+  1354→    const { dispatchWebhookEvent } = await import('@/lib/webhook-dispatch');
+  1355→    await dispatchWebhookEvent(event.id);
+  1356→  } catch (err: any) {
+  1357→    return { success: false, error: err?.message || 'Dispatch failed' };
+  1358→  }
+  1359→
+  1360→  revalidatePath('/dashboard/developers');
+  1361→  return { success: true, eventId: event.id };
+  1362→}
+  1363→
+  1364→// ─── RETRY FAILED WEBHOOK DELIVERY ───────────────────────────
+  1365→
+  1366→export async function retryWebhookDelivery(deliveryId: string) {
+  1367→  const ctx = await getWorkspaceContext();
+  1368→  if (!ctx) return { success: false, error: 'Unauthorized' };
+  1369→
+  1370→  // Find the delivery — must belong to this workspace
+  1371→  const delivery = await db.webhookDelivery.findFirst({
+  1372→    where: { id: deliveryId, workspaceId: ctx.workspaceId },
+  1373→    include: {
+  1374→      webhookEvent: true,
+  1375→      webhookEndpoint: true,
+  1376→    },
+  1377→  });
+  1378→  if (!delivery) return { success: false, error: 'Delivery not found' };
+  1379→  if (!delivery.webhookEvent) return { success: false, error: 'Source event missing' };
+  1380→  if (!delivery.webhookEndpoint) return { success: false, error: 'Endpoint missing' };
+  1381→
+  1382→  // Re-dispatch by calling the dispatcher directly on the existing event
+  1383→  try {
+  1384→    const { dispatchWebhookEvent } = await import('@/lib/webhook-dispatch');
+  1385→    // The dispatcher will create a NEW WebhookDelivery row (doesn't mutate the failed one)
+  1386→    await dispatchWebhookEvent(delivery.webhookEvent.id);
+  1387→  } catch (err: any) {
+  1388→    return { success: false, error: err?.message || 'Retry failed' };
+  1389→  }
+  1390→
+  1391→  revalidatePath('/dashboard/developers');
+  1392→  return { success: true };
+  1393→}
+  1394→
+  1395→// ─── WEBHOOK ENDPOINT HEALTH CHECK ──────────────────────────
+  1396→
+  1397→export async function pingWebhookEndpoint(id: string) {
+  1398→  const ctx = await getWorkspaceContext();
+  1399→  if (!ctx) return { success: false, error: 'Unauthorized' };
+  1400→
+  1401→  const ep = await db.webhookEndpoint.findFirst({
+  1402→    where: { id, workspaceId: ctx.workspaceId },
+  1403→    select: { id: true },
+  1404→  });
+  1405→  if (!ep) return { success: false, error: 'Endpoint not found' };
+  1406→
+  1407→  // Use the shared health check module so results are persisted to EndpointHealthCheck
+  1408→  const { performHealthCheck } = await import('@/lib/health-check');
+  1409→  const result = await performHealthCheck(id, ctx.workspaceId, 'manual');
+  1410→
+  1411→  revalidatePath('/dashboard/developers');
+  1412→  return {
+  1413→    success: true,
+  1414→    is_healthy: result.healthy,
+  1415→    status_code: result.statusCode,
+  1416→    duration_ms: result.durationMs,
+  1417→    error: result.error,
+  1418→  };
+  1419→}
+  1420→
+  1421→// ─── PING ALL ENDPOINTS (batch health check) ────────────────
+  1422→
+  1423→export async function pingAllWebhookEndpoints() {
+  1424→  const ctx = await getWorkspaceContext();
+  1425→  if (!ctx) return { success: false, error: 'Unauthorized' };
+  1426→
+  1427→  const endpoints = await db.webhookEndpoint.findMany({
+  1428→    where: { workspaceId: ctx.workspaceId, isActive: true },
+  1429→    select: { id: true },
+  1430→  });
+  1431→
+  1432→  const { performHealthCheck } = await import('@/lib/health-check');
+  1433→
+  1434→  const results: { id: string; healthy: boolean; status_code: number | null; duration_ms: number; error?: string }[] = [];
+  1435→
+  1436→  // Sequential pings to avoid hammering the network
+  1437→  for (const ep of endpoints) {
+  1438→    const result = await performHealthCheck(ep.id, ctx.workspaceId, 'manual');
+  1439→    results.push({
+  1440→      id: ep.id,
+  1441→      healthy: result.healthy,
+  1442→      status_code: result.statusCode,
+  1443→      duration_ms: result.durationMs,
+  1444→      error: result.error,
+  1445→    });
+  1446→  }
+  1447→
+  1448→  revalidatePath('/dashboard/developers');
+  1449→  return {
+  1450→    success: true,
+  1451→    total: endpoints.length,
+  1452→    healthy: results.filter((r) => r.healthy).length,
+  1453→    failed: results.filter((r) => !r.healthy).length,
+  1454→    results,
+  1455→  };
+  1456→}
+  1457→
+  1458→// ─── UPDATE WORKSPACE SLA THRESHOLD ─────────────────────────
+  1459→
+  1460→export async function updateSlaThreshold(threshold: number) {
+  1461→  const ctx = await getWorkspaceContext();
+  1462→  if (!ctx) return { success: false, error: 'Unauthorized' };
+  1463→
+  1464→  // Validate threshold: 1-100
+  1465→  if (!Number.isFinite(threshold) || threshold < 1 || threshold > 100) {
+  1466→    return { success: false, error: 'Threshold must be between 1 and 100' };
+  1467→  }
+  1468→
+  1469→  const rounded = Math.round(threshold);
+  1470→
+  1471→  await db.workspace.update({
+  1472→    where: { id: ctx.workspaceId },
+  1473→    data: { slaThreshold: rounded },
+  1474→  });
+  1475→
+  1476→  // Record a notification so the audit trail shows the change
+  1477→  await db.notification.create({
+  1478→    data: {
+  1479→      workspaceId: ctx.workspaceId,
+  1480→      title: 'SLA threshold updated',
+  1481→      body: `SLA breach threshold set to ${rounded}%. Endpoints below this uptime will trigger breach alerts.`,
+  1482→      type: 'info',
+  1483→    },
+  1484→  });
+  1485→
+  1486→  revalidatePath('/dashboard/developers');
+  1487→  return { success: true, threshold: rounded };
+  1488→}
+  1489→
+  1490→// ─── UPDATE WORKSPACE THEME PREFERENCE ─────────────────────
+  1491→
+  1492→export async function updateThemePreference(theme: 'dark' | 'light' | 'system') {
+  1493→  const ctx = await getWorkspaceContext();
+  1494→  if (!ctx) return { success: false, error: 'Unauthorized' };
+  1495→
+  1496→  if (!['dark', 'light', 'system'].includes(theme)) {
+  1497→    return { success: false, error: 'Invalid theme' };
+  1498→  }
+  1499→
+  1500→  await db.workspace.update({
+  1501→    where: { id: ctx.workspaceId },
+  1502→    data: { themePreference: theme },
+  1503→  });
+  1504→
+  1505→  return { success: true, theme };
+  1506→}
+  1507→
+  1508→// ─── UPDATE PER-ENDPOINT SLA THRESHOLD OVERRIDE ─────────────
+  1509→
+  1510→export async function updateEndpointSlaThreshold(endpointId: string, threshold: number | null) {
+  1511→  const ctx = await getWorkspaceContext();
+  1512→  if (!ctx) return { success: false, error: 'Unauthorized' };
+  1513→
+  1514→  // Verify ownership
+  1515→  const ep = await db.webhookEndpoint.findFirst({
+  1516→    where: { id: endpointId, workspaceId: ctx.workspaceId },
+  1517→    select: { id: true, label: true },
+  1518→  });
+  1519→  if (!ep) return { success: false, error: 'Endpoint not found' };
+  1520→
+  1521→  // Validate threshold: 1-100, or null to clear the override
+  1522→  if (threshold != null) {
+  1523→    if (!Number.isFinite(threshold) || threshold < 1 || threshold > 100) {
+  1524→      return { success: false, error: 'Threshold must be between 1 and 100' };
+  1525→    }
+  1526→    threshold = Math.round(threshold);
+  1527→  }
+  1528→
+  1529→  await db.webhookEndpoint.update({
+  1530→    where: { id: endpointId },
+  1531→    data: { slaThresholdOverride: threshold },
+  1532→  });
+  1533→
+  1534→  revalidatePath('/dashboard/developers');
+  1535→  return {
+  1536→    success: true,
+  1537→    threshold,
+  1538→    cleared: threshold == null,
+  1539→  };
+  1540→}
+  1541→
+  1542→// ─── NOTIFICATION PREFERENCES ────────────────────────────────
+  1543→
+  1544→export async function updateNotificationPreferences(mutedTypes: string[]) {
+  1545→  const ctx = await getWorkspaceContext();
+  1546→  if (!ctx) return { success: false, error: 'Unauthorized' };
+  1547→
+  1548→  // Validate types
+  1549→  const validTypes = ['payment', 'info', 'success', 'warning', 'error', 'dispute'];
+  1550→  const filtered = mutedTypes.filter((t) => validTypes.includes(t));
+  1551→
+  1552→  await db.workspace.update({
+  1553→    where: { id: ctx.workspaceId },
+  1554→    data: { mutedNotificationTypes: filtered.join(',') },
+  1555→  });
+  1556→
+  1557→  revalidatePath('/dashboard/settings');
+  1558→  return { success: true, mutedTypes: filtered };
+  1559→}
+  1560→
+  1561→export async function getNotificationPreferences() {
+  1562→  const ctx = await getWorkspaceContext();
+  1563→  if (!ctx) return { success: false, error: 'Unauthorized' };
+  1564→
+  1565→  const ws = await db.workspace.findUnique({
+  1566→    where: { id: ctx.workspaceId },
+  1567→    select: { mutedNotificationTypes: true },
+  1568→  });
+  1569→
+  1570→  const muted = ws?.mutedNotificationTypes
+  1571→    ? ws.mutedNotificationTypes.split(',').filter(Boolean)
+  1572→    : [];
+  1573→
+  1574→  return { success: true, mutedTypes: muted };
+  1575→}
+  1576→
+  1577→// ─── BULK WEBHOOK ENDPOINT ACTIONS ───────────────────────────
+  1578→
+  1579→export async function bulkToggleWebhookEndpoints(ids: string[], isActive: boolean) {
+  1580→  const ctx = await getWorkspaceContext();
+  1581→  if (!ctx) return { success: false, error: 'Unauthorized' };
+  1582→  if (ids.length === 0) return { success: false, error: 'No endpoints selected' };
+  1583→
+  1584→  // Verify ownership of all endpoints
+  1585→  const endpoints = await db.webhookEndpoint.findMany({
+  1586→    where: { id: { in: ids }, workspaceId: ctx.workspaceId },
+  1587→    select: { id: true },
+  1588→  });
+  1589→
+  1590→  if (endpoints.length !== ids.length) {
+  1591→    return { success: false, error: 'Some endpoints not found or access denied' };
+  1592→  }
+  1593→
+  1594→  const result = await db.webhookEndpoint.updateMany({
+  1595→    where: { id: { in: ids }, workspaceId: ctx.workspaceId },
+  1596→    data: { isActive },
+  1597→  });
+  1598→
+  1599→  revalidatePath('/dashboard/developers');
+  1600→  return { success: true, updated: result.count };
+  1601→}
+  1602→
+  1603→export async function bulkDeleteWebhookEndpoints(ids: string[]) {
+  1604→  const ctx = await getWorkspaceContext();
+  1605→  if (!ctx) return { success: false, error: 'Unauthorized' };
+  1606→  if (ids.length === 0) return { success: false, error: 'No endpoints selected' };
+  1607→
+  1608→  // Verify ownership
+  1609→  const endpoints = await db.webhookEndpoint.findMany({
+  1610→    where: { id: { in: ids }, workspaceId: ctx.workspaceId },
+  1611→    select: { id: true },
+  1612→  });
+  1613→
+  1614→  if (endpoints.length !== ids.length) {
+  1615→    return { success: false, error: 'Some endpoints not found or access denied' };
+  1616→  }
+  1617→
+  1618→  const result = await db.webhookEndpoint.deleteMany({
+  1619→    where: { id: { in: ids }, workspaceId: ctx.workspaceId },
+  1620→  });
+  1621→
+  1622→  revalidatePath('/dashboard/developers');
+  1623→  return { success: true, deleted: result.count };
+  1624→}
+  1625→
+  1626→// ─── WEBHOOK ENDPOINT FOLDER ASSIGNMENT ──────────────────────
+  1627→
+  1628→export async function updateEndpointFolder(endpointId: string, folder: string | null) {
+  1629→  const ctx = await getWorkspaceContext();
+  1630→  if (!ctx) return { success: false, error: 'Unauthorized' };
+  1631→
+  1632→  // Verify ownership
+  1633→  const ep = await db.webhookEndpoint.findFirst({
+  1634→    where: { id: endpointId, workspaceId: ctx.workspaceId },
+  1635→    select: { id: true },
+  1636→  });
+  1637→  if (!ep) return { success: false, error: 'Endpoint not found' };
+  1638→
+  1639→  // Validate folder name (max 50 chars, no commas to avoid CSV-like issues)
+  1640→  const trimmed = folder?.trim().slice(0, 50) || null;
+  1641→
+  1642→  await db.webhookEndpoint.update({
+  1643→    where: { id: endpointId },
+  1644→    data: { folder: trimmed },
+  1645→  });
+  1646→
+  1647→  revalidatePath('/dashboard/developers');
+  1648→  return { success: true, folder: trimmed };
+  1649→}
+  1650→

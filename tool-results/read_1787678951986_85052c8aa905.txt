@@ -1,0 +1,878 @@
+     1→'use client';
+     2→
+     3→import { useState, useMemo, useEffect } from 'react';
+     4→import { Download, Search, Filter, X, ExternalLink, CheckCircle2, XCircle, Clock, RefreshCw, AlertTriangle, RotateCcw, Loader2, Calendar, ChevronLeft, ChevronRight, Link2 } from 'lucide-react';
+     5→import { processRefund } from '@/app/dashboard/actions';
+     6→
+     7→export interface Transaction {
+     8→  id: string;
+     9→  invoice_id: string | null;
+    10→  gateway_slug: string;
+    11→  gateway_label: string | null;
+    12→  external_id: string | null;
+    13→  amount_cents: number;
+    14→  currency: string;
+    15→  status: 'pending' | 'succeeded' | 'failed' | 'refunded' | 'disputed';
+    16→  failure_reason: string | null;
+    17→  customer_email: string | null;
+    18→  customer_name: string | null;
+    19→  invoice_number: string | null;
+    20→  created_at: string;
+    21→}
+    22→
+    23→interface Gateway {
+    24→  id: string;
+    25→  gateway_slug: string;
+    26→  label: string;
+    27→}
+    28→
+    29→interface Props {
+    30→  transactions: Transaction[];
+    31→  gateways: Gateway[];
+    32→  stats: {
+    33→    totalVolume: number;
+    34→    succeededCount: number;
+    35→    failedCount: number;
+    36→    pendingCount: number;
+    37→    refundedCount: number;
+    38→    disputedCount: number;
+    39→    totalCount: number;
+    40→    successRate: number;
+    41→    avgAmount: number;
+    42→  };
+    43→}
+    44→
+    45→function toUsd(cents: number) {
+    46→  return new Intl.NumberFormat('en-US', {
+    47→    style: 'currency',
+    48→    currency: 'USD',
+    49→    minimumFractionDigits: 2,
+    50→  }).format((cents || 0) / 100);
+    51→}
+    52→
+    53→const STATUS_CONFIG: Record<
+    54→  string,
+    55→  { label: string; bg: string; text: string; border: string; icon: any }
+    56→> = {
+    57→  succeeded: {
+    58→    label: 'Succeeded',
+    59→    bg: 'bg-green-500/15',
+    60→    text: 'text-green-400',
+    61→    border: 'border-green-500/25',
+    62→    icon: CheckCircle2,
+    63→  },
+    64→  failed: {
+    65→    label: 'Failed',
+    66→    bg: 'bg-red-500/15',
+    67→    text: 'text-red-400',
+    68→    border: 'border-red-500/25',
+    69→    icon: XCircle,
+    70→  },
+    71→  pending: {
+    72→    label: 'Pending',
+    73→    bg: 'bg-amber-500/15',
+    74→    text: 'text-amber-400',
+    75→    border: 'border-amber-500/25',
+    76→    icon: Clock,
+    77→  },
+    78→  refunded: {
+    79→    label: 'Refunded',
+    80→    bg: 'bg-blue-500/15',
+    81→    text: 'text-blue-300',
+    82→    border: 'border-blue-500/25',
+    83→    icon: RefreshCw,
+    84→  },
+    85→  disputed: {
+    86→    label: 'Disputed',
+    87→    bg: 'bg-red-500/15',
+    88→    text: 'text-red-400',
+    89→    border: 'border-red-500/25',
+    90→    icon: AlertTriangle,
+    91→  },
+    92→};
+    93→
+    94→const GATEWAY_ICONS: Record<string, string> = {
+    95→  stripe: '💳',
+    96→  paypal: '🅿️',
+    97→  square: '⬜',
+    98→  adyen: '🔷',
+    99→  razorpay: '⚡',
+   100→  authorize_net: '🔐',
+   101→  braintree: '🔶',
+   102→  mollie: '🔵',
+   103→  custom: '🔌',
+   104→  manual: '✋',
+   105→};
+   106→
+   107→function timeAgo(iso: string): string {
+   108→  const diff = Date.now() - new Date(iso).getTime();
+   109→  const mins = Math.floor(diff / 60000);
+   110→  if (mins < 1) return 'just now';
+   111→  if (mins < 60) return `${mins}m ago`;
+   112→  const hours = Math.floor(mins / 60);
+   113→  if (hours < 24) return `${hours}h ago`;
+   114→  const days = Math.floor(hours / 24);
+   115→  if (days < 7) return `${days}d ago`;
+   116→  return new Date(iso).toLocaleDateString();
+   117→}
+   118→
+   119→export default function TransactionsTableClient({ transactions, gateways, stats }: Props) {
+   120→  const [search, setSearch] = useState('');
+   121→  const [statusFilter, setStatusFilter] = useState('all');
+   122→  const [gatewayFilter, setGatewayFilter] = useState('all');
+   123→  const [dateRange, setDateRange] = useState('all');
+   124→  const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
+   125→  const [showRefundForm, setShowRefundForm] = useState(false);
+   126→  const [refundAmount, setRefundAmount] = useState('');
+   127→  const [refundReason, setRefundReason] = useState('duplicate');
+   128→  const [refundLoading, setRefundLoading] = useState(false);
+   129→  const [refundError, setRefundError] = useState<string | null>(null);
+   130→  const [refundSuccess, setRefundSuccess] = useState(false);
+   131→  const [currentPage, setCurrentPage] = useState(1);
+   132→  const pageSize = 10;
+   133→
+   134→  // Unique gateway slugs from transactions + configured gateways
+   135→  const gatewaySlugs = useMemo(() => {
+   136→    const set = new Set<string>();
+   137→    transactions.forEach((t) => set.add(t.gateway_slug));
+   138→    gateways.forEach((g) => set.add(g.gateway_slug));
+   139→    return Array.from(set).sort();
+   140→  }, [transactions, gateways]);
+   141→
+   142→  const filtered = useMemo(() => {
+   143→    // Compute date range cutoff
+   144→    let dateCutoff: number | null = null;
+   145→    if (dateRange !== 'all') {
+   146→      const now = Date.now();
+   147→      const days = dateRange === '7d' ? 7 : dateRange === '30d' ? 30 : dateRange === '90d' ? 90 : 365;
+   148→      dateCutoff = now - days * 86400000;
+   149→    }
+   150→
+   151→    return transactions.filter((t) => {
+   152→      // Date range filter
+   153→      if (dateCutoff !== null) {
+   154→        const txDate = new Date(t.created_at).getTime();
+   155→        if (txDate < dateCutoff) return false;
+   156→      }
+   157→      // Status filter
+   158→      if (statusFilter !== 'all' && t.status !== statusFilter) return false;
+   159→      // Gateway filter
+   160→      if (gatewayFilter !== 'all' && t.gateway_slug !== gatewayFilter) return false;
+   161→      // Search filter
+   162→      if (search.trim()) {
+   163→        const q = search.toLowerCase();
+   164→        const haystack = [
+   165→          t.id,
+   166→          t.external_id,
+   167→          t.gateway_slug,
+   168→          t.gateway_label,
+   169→          t.customer_email,
+   170→          t.customer_name,
+   171→          t.invoice_number,
+   172→          t.failure_reason,
+   173→          t.status,
+   174→        ]
+   175→          .filter(Boolean)
+   176→          .join(' ')
+   177→          .toLowerCase();
+   178→        if (!haystack.includes(q)) return false;
+   179→      }
+   180→      return true;
+   181→    });
+   182→  }, [transactions, statusFilter, gatewayFilter, search, dateRange]);
+   183→
+   184→  const handleExport = (type: 'transactions' | 'invoices') => {
+   185→    window.open(`/api/dashboard/export?type=${type}`, '_blank');
+   186→  };
+   187→
+   188→  const handleRefund = async () => {
+   189→    if (!selectedTx) return;
+   190→    const amount = parseFloat(refundAmount);
+   191→    if (!Number.isFinite(amount) || amount <= 0) {
+   192→      setRefundError('Enter a valid refund amount');
+   193→      return;
+   194→    }
+   195→    const amountCents = Math.round(amount * 100);
+   196→    if (amountCents > selectedTx.amount_cents) {
+   197→      setRefundError(`Amount cannot exceed ${toUsd(selectedTx.amount_cents)}`);
+   198→      return;
+   199→    }
+   200→
+   201→    setRefundLoading(true);
+   202→    setRefundError(null);
+   203→    try {
+   204→      const result = await processRefund(selectedTx.id, amountCents, refundReason);
+   205→      if (result.success) {
+   206→        setRefundSuccess(true);
+   207→        setTimeout(() => {
+   208→          setSelectedTx(null);
+   209→          setShowRefundForm(false);
+   210→          setRefundAmount('');
+   211→          setRefundReason('duplicate');
+   212→          setRefundSuccess(false);
+   213→          window.location.reload();
+   214→        }, 1500);
+   215→      } else {
+   216→        setRefundError(result.error || 'Refund failed');
+   217→      }
+   218→    } catch {
+   219→      setRefundError('An unexpected error occurred');
+   220→    } finally {
+   221→      setRefundLoading(false);
+   222→    }
+   223→  };
+   224→
+   225→  const closeModal = () => {
+   226→    setSelectedTx(null);
+   227→    setShowRefundForm(false);
+   228→    setRefundAmount('');
+   229→    setRefundReason('duplicate');
+   230→    setRefundError(null);
+   231→    setRefundSuccess(false);
+   232→  };
+   233→
+   234→  const hasFilters = search || statusFilter !== 'all' || gatewayFilter !== 'all' || dateRange !== 'all';
+   235→
+   236→  const clearFilters = () => {
+   237→    setSearch('');
+   238→    setStatusFilter('all');
+   239→    setGatewayFilter('all');
+   240→    setDateRange('all');
+   241→    setCurrentPage(1);
+   242→  };
+   243→
+   244→  // Reset to page 1 when filters change
+   245→  useEffect(() => {
+   246→    setCurrentPage(1);
+   247→  }, [search, statusFilter, gatewayFilter, dateRange]);
+   248→
+   249→  // Pagination
+   250→  const totalPages = Math.ceil(filtered.length / pageSize);
+   251→  const paginated = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+   252→  const startIdx = (currentPage - 1) * pageSize;
+   253→  const endIdx = Math.min(startIdx + pageSize, filtered.length);
+   254→
+   255→  return (
+   256→    <div className="space-y-6">
+   257→      {/* Stats Row */}
+   258→      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+   259→        <div className="glass-card glass-card-hover rounded-2xl p-4 animate-stagger stagger-1">
+   260→          <div className="flex items-center gap-2 mb-2">
+   261→            <div className="w-7 h-7 rounded-lg bg-green-500/10 flex items-center justify-center">
+   262→              <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
+   263→            </div>
+   264→            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+   265→              Total Volume
+   266→            </span>
+   267→          </div>
+   268→          <p className="text-xl font-black text-white animate-count">{toUsd(stats.totalVolume)}</p>
+   269→          <p className="text-[11px] text-zinc-500 mt-1">{stats.succeededCount} successful</p>
+   270→        </div>
+   271→
+   272→        <div className="glass-card glass-card-hover rounded-2xl p-4 animate-stagger stagger-2">
+   273→          <div className="flex items-center gap-2 mb-2">
+   274→            <div className="w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center">
+   275→              <Clock className="w-3.5 h-3.5 text-amber-400" />
+   276→            </div>
+   277→            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+   278→              Pending
+   279→            </span>
+   280→          </div>
+   281→          <p className="text-xl font-black text-amber-400 animate-count">{stats.pendingCount}</p>
+   282→          <p className="text-[11px] text-zinc-500 mt-1">awaiting settlement</p>
+   283→        </div>
+   284→
+   285→        <div className="glass-card glass-card-hover rounded-2xl p-4 animate-stagger stagger-3">
+   286→          <div className="flex items-center gap-2 mb-2">
+   287→            <div className="w-7 h-7 rounded-lg bg-green-500/10 flex items-center justify-center">
+   288→              <span className="text-[10px] font-bold text-green-400">{stats.successRate}%</span>
+   289→            </div>
+   290→            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+   291→              Success Rate
+   292→            </span>
+   293→          </div>
+   294→          <p className="text-xl font-black text-green-400 animate-count">{stats.successRate}%</p>
+   295→          <p className="text-[11px] text-zinc-500 mt-1">{stats.failedCount} failed</p>
+   296→        </div>
+   297→
+   298→        <div className="glass-card glass-card-hover rounded-2xl p-4 animate-stagger stagger-4">
+   299→          <div className="flex items-center gap-2 mb-2">
+   300→            <div className="w-7 h-7 rounded-lg bg-blue-500/10 flex items-center justify-center">
+   301→              <span className="text-[10px] font-bold text-blue-400">Avg</span>
+   302→            </div>
+   303→            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+   304→              Avg Amount
+   305→            </span>
+   306→          </div>
+   307→          <p className="text-xl font-black text-white animate-count">{toUsd(stats.avgAmount)}</p>
+   308→          <p className="text-[11px] text-zinc-500 mt-1">{stats.totalCount} total</p>
+   309→        </div>
+   310→      </div>
+   311→
+   312→      {/* Filters + Export Bar */}
+   313→      <div className="glass-card rounded-2xl p-4 animate-fadeIn">
+   314→        <div className="flex flex-col lg:flex-row gap-3">
+   315→          {/* Search */}
+   316→          <div className="relative flex-1 min-w-0">
+   317→            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+   318→            <input
+   319→              type="text"
+   320→              value={search}
+   321→              onChange={(e) => setSearch(e.target.value)}
+   322→              placeholder="Search by ID, customer, email, invoice..."
+   323→              className="w-full pl-9 pr-8 py-2 rounded-xl bg-[#1a1a1f] border border-[#252529] text-sm text-white outline-none focus:border-[#10B981]/40 transition-all placeholder:text-zinc-600"
+   324→            />
+   325→            {search && (
+   326→              <button
+   327→                onClick={() => setSearch('')}
+   328→                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-zinc-500 hover:text-zinc-300 transition-colors"
+   329→              >
+   330→                <X className="w-3.5 h-3.5" />
+   331→              </button>
+   332→            )}
+   333→          </div>
+   334→
+   335→          {/* Status Filter */}
+   336→          <div className="relative">
+   337→            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500 pointer-events-none" />
+   338→            <select
+   339→              value={statusFilter}
+   340→              onChange={(e) => setStatusFilter(e.target.value)}
+   341→              className="pl-9 pr-8 py-2 rounded-xl bg-[#1a1a1f] border border-[#252529] text-sm text-white outline-none focus:border-[#10B981]/40 transition-all cursor-pointer appearance-none min-w-[140px]"
+   342→            >
+   343→              <option value="all">All Status</option>
+   344→              <option value="succeeded">Succeeded</option>
+   345→              <option value="pending">Pending</option>
+   346→              <option value="failed">Failed</option>
+   347→              <option value="refunded">Refunded</option>
+   348→              <option value="disputed">Disputed</option>
+   349→            </select>
+   350→          </div>
+   351→
+   352→          {/* Gateway Filter */}
+   353→          <div className="relative">
+   354→            <select
+   355→              value={gatewayFilter}
+   356→              onChange={(e) => setGatewayFilter(e.target.value)}
+   357→              className="pl-3 pr-8 py-2 rounded-xl bg-[#1a1a1f] border border-[#252529] text-sm text-white outline-none focus:border-[#10B981]/40 transition-all cursor-pointer appearance-none min-w-[140px]"
+   358→            >
+   359→              <option value="all">All Gateways</option>
+   360→              {gatewaySlugs.map((slug) => (
+   361→                <option key={slug} value={slug}>
+   362→                  {GATEWAY_ICONS[slug] || '🔗'} {slug}
+   363→                </option>
+   364→              ))}
+   365→            </select>
+   366→          </div>
+   367→
+   368→          {/* Date Range Filter */}
+   369→          <div className="relative">
+   370→            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500 pointer-events-none" />
+   371→            <select
+   372→              value={dateRange}
+   373→              onChange={(e) => setDateRange(e.target.value)}
+   374→              className="pl-9 pr-8 py-2 rounded-xl bg-[#1a1a1f] border border-[#252529] text-sm text-white outline-none focus:border-[#10B981]/40 transition-all cursor-pointer appearance-none min-w-[130px]"
+   375→            >
+   376→              <option value="all">All Time</option>
+   377→              <option value="7d">Last 7 days</option>
+   378→              <option value="30d">Last 30 days</option>
+   379→              <option value="90d">Last 90 days</option>
+   380→              <option value="1y">Last year</option>
+   381→            </select>
+   382→          </div>
+   383→
+   384→          {/* Export Buttons */}
+   385→          <div className="flex gap-2">
+   386→            <button
+   387→              onClick={() => handleExport('transactions')}
+   388→              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#1a1a1f] border border-[#252529] text-xs font-medium text-zinc-300 hover:text-[#10B981] hover:border-[#10B981]/30 transition-all whitespace-nowrap"
+   389→            >
+   390→              <Download className="w-3.5 h-3.5" />
+   391→              Export CSV
+   392→            </button>
+   393→          </div>
+   394→        </div>
+   395→
+   396→        {/* Active filter indicator */}
+   397→        {hasFilters && (
+   398→          <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[#252529]/50">
+   399→            <span className="text-[11px] text-zinc-500">
+   400→              Showing {filtered.length} of {transactions.length} transactions
+   401→            </span>
+   402→            <button
+   403→              onClick={clearFilters}
+   404→              className="flex items-center gap-1 text-[11px] text-[#10B981] hover:text-[#34D399] transition-colors ml-auto"
+   405→            >
+   406→              <X className="w-3 h-3" />
+   407→              Clear filters
+   408→            </button>
+   409→          </div>
+   410→        )}
+   411→      </div>
+   412→
+   413→      {/* Transactions Table */}
+   414→      <div className="glass-card rounded-3xl p-4 sm:p-6 animate-fadeIn">
+   415→        <div className="flex items-center justify-between mb-6">
+   416→          <div className="flex items-center gap-2.5">
+   417→            <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-[#10B981]/10">
+   418→              <CheckCircle2 className="w-4 h-4 text-[#10B981]" />
+   419→            </span>
+   420→            <h2 className="text-lg font-bold text-white">Payment Transactions</h2>
+   421→            <span className="text-[10px] font-bold text-zinc-500 bg-zinc-800/50 px-2 py-0.5 rounded-full border border-[#252529]">
+   422→              {filtered.length}
+   423→            </span>
+   424→          </div>
+   425→        </div>
+   426→
+   427→        <div className="overflow-x-auto">
+   428→          <table className="w-full min-w-[800px] text-left text-sm whitespace-nowrap">
+   429→            <thead>
+   430→              <tr className="text-zinc-500 border-b border-[#252529]/60">
+   431→                <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider">Transaction</th>
+   432→                <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider">Customer</th>
+   433→                <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider text-right">Amount</th>
+   434→                <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider text-center">Status</th>
+   435→                <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider text-center">Gateway</th>
+   436→                <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider text-right">Date</th>
+   437→                <th className="pb-3 font-semibold uppercase text-[10px] tracking-wider text-center"></th>
+   438→              </tr>
+   439→            </thead>
+   440→            <tbody className="divide-y divide-[#252529]/30">
+   441→              {filtered.length === 0 ? (
+   442→                <tr>
+   443→                  <td colSpan={7} className="py-16 text-center">
+   444→                    <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-zinc-800/50 mb-3">
+   445→                      <Search className="w-5 h-5 text-zinc-600" />
+   446→                    </div>
+   447→                    <p className="text-sm text-zinc-400 font-medium">
+   448→                      {hasFilters ? 'No transactions match your filters' : 'No transactions yet'}
+   449→                    </p>
+   450→                    <p className="text-xs text-zinc-600 mt-1">
+   451→                      {hasFilters
+   452→                        ? 'Try adjusting your search or filters'
+   453→                        : 'Payment attempts will appear here once customers pay'}
+   454→                    </p>
+   455→                    {hasFilters && (
+   456→                      <button
+   457→                        onClick={clearFilters}
+   458→                        className="mt-3 text-xs text-[#10B981] hover:text-[#34D399] transition-colors"
+   459→                      >
+   460→                        Clear all filters
+   461→                      </button>
+   462→                    )}
+   463→                  </td>
+   464→                </tr>
+   465→              ) : (
+   466→                paginated.map((tx, i) => {
+   467→                  const statusCfg = STATUS_CONFIG[tx.status] || STATUS_CONFIG.pending;
+   468→                  const StatusIcon = statusCfg.icon;
+   469→                  return (
+   470→                    <tr
+   471→                      key={tx.id}
+   472→                      onClick={() => setSelectedTx(tx)}
+   473→                      className={`hover:bg-white/5 transition-colors cursor-pointer animate-stagger stagger-${Math.min(i + 1, 6)}`}
+   474→                    >
+   475→                      <td className="py-3">
+   476→                        <div className="flex flex-col">
+   477→                          <span className="font-mono text-[#10B981] text-xs">
+   478→                            {tx.external_id || tx.id.slice(0, 12)}
+   479→                          </span>
+   480→                          {tx.invoice_number && (
+   481→                            <span className="text-[10px] text-zinc-600 mt-0.5">
+   482→                              {tx.invoice_number}
+   483→                            </span>
+   484→                          )}
+   485→                        </div>
+   486→                      </td>
+   487→                      <td className="py-3">
+   488→                        <div className="flex items-center gap-2">
+   489→                          <div className="w-7 h-7 rounded-full bg-[#10B981]/15 flex items-center justify-center text-[#10B981] font-bold text-[10px]">
+   490→                            {(tx.customer_name || tx.customer_email || 'U')[0].toUpperCase()}
+   491→                          </div>
+   492→                          <div>
+   493→                            <p className="text-zinc-200 text-sm font-medium">
+   494→                              {tx.customer_name || 'Unknown'}
+   495→                            </p>
+   496→                            {tx.customer_email && (
+   497→                              <p className="text-zinc-600 text-[10px]">{tx.customer_email}</p>
+   498→                            )}
+   499→                          </div>
+   500→                        </div>
+   501→                      </td>
+   502→                      <td className="py-3 text-right">
+   503→                        <span className="font-semibold text-white text-sm">
+   504→                          {toUsd(tx.amount_cents)}
+   505→                        </span>
+   506→                        <span className="text-[10px] text-zinc-600 ml-1">{tx.currency}</span>
+   507→                      </td>
+   508→                      <td className="py-3 text-center">
+   509→                        <span
+   510→                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${statusCfg.bg} ${statusCfg.text} ${statusCfg.border}`}
+   511→                        >
+   512→                          <StatusIcon className="w-3 h-3" />
+   513→                          {statusCfg.label}
+   514→                        </span>
+   515→                      </td>
+   516→                      <td className="py-3 text-center">
+   517→                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#1a1a1f] border border-[#252529] text-xs font-bold text-zinc-300">
+   518→                          <span>{GATEWAY_ICONS[tx.gateway_slug] || '🔗'}</span>
+   519→                          {tx.gateway_label || tx.gateway_slug}
+   520→                        </span>
+   521→                      </td>
+   522→                      <td className="py-3 text-right text-zinc-400 text-xs">
+   523→                        {timeAgo(tx.created_at)}
+   524→                      </td>
+   525→                      <td className="py-3 text-center">
+   526→                        <button
+   527→                          onClick={(e) => {
+   528→                            e.stopPropagation();
+   529→                            setSelectedTx(tx);
+   530→                          }}
+   531→                          className="text-xs text-zinc-500 hover:text-[#10B981] transition-colors"
+   532→                        >
+   533→                          Details
+   534→                        </button>
+   535→                      </td>
+   536→                    </tr>
+   537→                  );
+   538→                })
+   539→              )}
+   540→            </tbody>
+   541→          </table>
+   542→        </div>
+   543→
+   544→        {/* Pagination */}
+   545→        {filtered.length > pageSize && (
+   546→          <div className="flex items-center justify-between pt-4 border-t border-[#252529]/40 mt-4">
+   547→            <p className="text-[11px] text-zinc-500">
+   548→              Showing <span className="text-zinc-300 font-medium">{startIdx + 1}</span>–
+   549→              <span className="text-zinc-300 font-medium">{endIdx}</span> of{' '}
+   550→              <span className="text-zinc-300 font-medium">{filtered.length}</span> transactions
+   551→            </p>
+   552→            <div className="flex items-center gap-1">
+   553→              <button
+   554→                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+   555→                disabled={currentPage === 1}
+   556→                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 bg-[#1a1a1f] border border-[#252529] hover:border-[#10B981]/30 hover:text-[#10B981] transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-[#252529] disabled:hover:text-zinc-300"
+   557→              >
+   558→                <ChevronLeft className="w-3.5 h-3.5" />
+   559→                Prev
+   560→              </button>
+   561→              {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+   562→                let page = i + 1;
+   563→                if (totalPages > 5 && currentPage > 3) {
+   564→                  page = currentPage - 2 + i;
+   565→                  if (page > totalPages) page = totalPages - 4 + i;
+   566→                }
+   567→                if (page < 1 || page > totalPages) return null;
+   568→                return (
+   569→                  <button
+   570→                    key={page}
+   571→                    onClick={() => setCurrentPage(page)}
+   572→                    className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${
+   573→                      currentPage === page
+   574→                        ? 'bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/30'
+   575→                        : 'text-zinc-400 bg-[#1a1a1f] border border-[#252529] hover:text-white hover:border-[#10B981]/30'
+   576→                    }`}
+   577→                  >
+   578→                    {page}
+   579→                  </button>
+   580→                );
+   581→              })}
+   582→              <button
+   583→                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+   584→                disabled={currentPage === totalPages}
+   585→                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 bg-[#1a1a1f] border border-[#252529] hover:border-[#10B981]/30 hover:text-[#10B981] transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-[#252529] disabled:hover:text-zinc-300"
+   586→              >
+   587→                Next
+   588→                <ChevronRight className="w-3.5 h-3.5" />
+   589→              </button>
+   590→            </div>
+   591→          </div>
+   592→        )}
+   593→      </div>
+   594→
+   595→      {/* Transaction Detail Modal */}
+   596→      {selectedTx && (
+   597→        <div
+   598→          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+   599→          onClick={closeModal}
+   600→        >
+   601→          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fadeIn" />
+   602→          <div
+   603→            className="relative w-full max-w-lg bg-[#131316] rounded-2xl border border-[#252529] shadow-2xl overflow-hidden animate-scaleIn max-h-[90vh] flex flex-col"
+   604→            onClick={(e) => e.stopPropagation()}
+   605→          >
+   606→            {/* Header */}
+   607→            <div className="flex items-center justify-between px-6 py-4 border-b border-[#252529]/60 flex-shrink-0">
+   608→              <div className="flex items-center gap-2.5">
+   609→                <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-[#10B981]/10">
+   610→                  <span className="text-base">{GATEWAY_ICONS[selectedTx.gateway_slug] || '🔗'}</span>
+   611→                </div>
+   612→                <div>
+   613→                  <h3 className="text-sm font-bold text-white">Transaction Details</h3>
+   614→                  <p className="text-[10px] text-zinc-500 font-mono">{selectedTx.id}</p>
+   615→                </div>
+   616→              </div>
+   617→              <button
+   618→                onClick={closeModal}
+   619→                className="w-8 h-8 rounded-full bg-black/20 flex items-center justify-center text-white hover:bg-black/30 transition-colors"
+   620→              >
+   621→                ✕
+   622→              </button>
+   623→            </div>
+   624→
+   625→            {/* Body */}
+   626→            <div className="p-6 space-y-4 overflow-y-auto custom-scrollbar flex-1">
+   627→              {refundSuccess ? (
+   628→                <div className="flex flex-col items-center justify-center py-12 text-center">
+   629→                  <div className="flex items-center justify-center w-14 h-14 rounded-full bg-green-500/15 mb-3">
+   630→                    <CheckCircle2 className="w-7 h-7 text-green-400" />
+   631→                  </div>
+   632→                  <p className="text-base font-bold text-white">Refund Processed</p>
+   633→                  <p className="text-xs text-zinc-500 mt-1">The transaction has been refunded successfully.</p>
+   634→                </div>
+   635→              ) : (
+   636→                <>
+   637→                  {/* Amount + Status */}
+   638→                  <div className="flex items-center justify-between p-4 rounded-xl bg-[#0a0a0b] border border-[#252529]">
+   639→                    <div>
+   640→                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
+   641→                        Amount
+   642→                      </p>
+   643→                      <p className="text-2xl font-black text-white">
+   644→                        {toUsd(selectedTx.amount_cents)}
+   645→                      </p>
+   646→                      <p className="text-[10px] text-zinc-500">{selectedTx.currency}</p>
+   647→                    </div>
+   648→                    {(() => {
+   649→                      const cfg = STATUS_CONFIG[selectedTx.status] || STATUS_CONFIG.pending;
+   650→                      const Icon = cfg.icon;
+   651→                      return (
+   652→                        <span
+   653→                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider border ${cfg.bg} ${cfg.text} ${cfg.border}`}
+   654→                        >
+   655→                          <Icon className="w-3.5 h-3.5" />
+   656→                          {cfg.label}
+   657→                        </span>
+   658→                      );
+   659→                    })()}
+   660→                  </div>
+   661→
+   662→                  {/* Details grid */}
+   663→                  <div className="grid grid-cols-2 gap-3">
+   664→                    <DetailField label="External ID" value={selectedTx.external_id || '—'} mono />
+   665→                    <DetailField label="Gateway" value={selectedTx.gateway_label || selectedTx.gateway_slug} />
+   666→                    <DetailField label="Customer" value={selectedTx.customer_name || '—'} />
+   667→                    <DetailField label="Email" value={selectedTx.customer_email || '—'} />
+   668→                    <DetailField
+   669→                      label="Invoice"
+   670→                      value={selectedTx.invoice_number || '—'}
+   671→                      link={selectedTx.invoice_id ? `/invoice/${selectedTx.invoice_id}` : null}
+   672→                    />
+   673→                    <DetailField label="Date" value={new Date(selectedTx.created_at).toLocaleString()} />
+   674→                  </div>
+   675→
+   676→                  {/* Failure reason / refund info */}
+   677→                  {selectedTx.failure_reason && (
+   678→                    <div className={`p-3 rounded-xl border ${selectedTx.status === 'refunded' ? 'bg-blue-500/5 border-blue-500/20' : 'bg-red-500/5 border-red-500/20'}`}>
+   679→                      <p className={`text-[10px] font-bold uppercase tracking-wider mb-1 ${selectedTx.status === 'refunded' ? 'text-blue-400' : 'text-red-400'}`}>
+   680→                        {selectedTx.status === 'refunded' ? 'Refund Info' : 'Failure Reason'}
+   681→                      </p>
+   682→                      <p className={`text-sm ${selectedTx.status === 'refunded' ? 'text-blue-300' : 'text-red-300'}`}>
+   683→                        {selectedTx.failure_reason}
+   684→                      </p>
+   685→                    </div>
+   686→                  )}
+   687→
+   688→                  {/* Refund Form */}
+   689→                  {showRefundForm && selectedTx.status === 'succeeded' && (
+   690→                    <div className="p-4 rounded-xl bg-amber-500/5 border border-amber-500/20 space-y-3 animate-scaleIn">
+   691→                      <div className="flex items-center gap-2">
+   692→                        <RotateCcw className="w-4 h-4 text-amber-400" />
+   693→                        <p className="text-sm font-bold text-amber-400">Process Refund</p>
+   694→                      </div>
+   695→                      <div>
+   696→                        <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1.5">
+   697→                          Refund Amount (USD)
+   698→                        </label>
+   699→                        <div className="relative">
+   700→                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 text-sm">$</span>
+   701→                          <input
+   702→                            type="number"
+   703→                            step="0.01"
+   704→                            min="0.01"
+   705→                            max={(selectedTx.amount_cents / 100).toFixed(2)}
+   706→                            value={refundAmount}
+   707→                            onChange={(e) => setRefundAmount(e.target.value)}
+   708→                            placeholder={(selectedTx.amount_cents / 100).toFixed(2)}
+   709→                            className="w-full pl-7 pr-3 py-2 rounded-lg bg-[#0a0a0b] border border-[#252529] text-sm text-white outline-none focus:border-amber-500/40 transition-all"
+   710→                          />
+   711→                        </div>
+   712→                        <button
+   713→                          onClick={() => setRefundAmount((selectedTx.amount_cents / 100).toFixed(2))}
+   714→                          className="text-[10px] text-amber-400 hover:text-amber-300 mt-1 transition-colors"
+   715→                        >
+   716→                          Use full amount ({toUsd(selectedTx.amount_cents)})
+   717→                        </button>
+   718→                      </div>
+   719→                      <div>
+   720→                        <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1.5">
+   721→                          Reason
+   722→                        </label>
+   723→                        <select
+   724→                          value={refundReason}
+   725→                          onChange={(e) => setRefundReason(e.target.value)}
+   726→                          className="w-full px-3 py-2 rounded-lg bg-[#0a0a0b] border border-[#252529] text-sm text-white outline-none focus:border-amber-500/40 transition-all cursor-pointer"
+   727→                        >
+   728→                          <option value="duplicate">Duplicate payment</option>
+   729→                          <option value="fraudulent">Fraudulent transaction</option>
+   730→                          <option value="requested_by_customer">Requested by customer</option>
+   731→                          <option value="product_unacceptable">Product/service unacceptable</option>
+   732→                          <option value="other">Other</option>
+   733→                        </select>
+   734→                      </div>
+   735→                      {refundError && (
+   736→                        <div className="p-2 rounded-lg bg-red-500/10 border border-red-500/20">
+   737→                          <p className="text-xs text-red-400">{refundError}</p>
+   738→                        </div>
+   739→                      )}
+   740→                      <div className="flex gap-2">
+   741→                        <button
+   742→                          onClick={() => setShowRefundForm(false)}
+   743→                          disabled={refundLoading}
+   744→                          className="flex-1 py-2 rounded-lg border border-[#252529] text-xs font-semibold text-zinc-300 hover:bg-white/5 transition-all disabled:opacity-50"
+   745→                        >
+   746→                          Cancel
+   747→                        </button>
+   748→                        <button
+   749→                          onClick={handleRefund}
+   750→                          disabled={refundLoading}
+   751→                          className="flex-1 py-2 rounded-lg bg-amber-500/20 border border-amber-500/40 text-xs font-bold text-amber-400 hover:bg-amber-500/30 transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+   752→                        >
+   753→                          {refundLoading ? (
+   754→                            <>
+   755→                              <Loader2 className="w-3 h-3 animate-spin" />
+   756→                              Processing...
+   757→                            </>
+   758→                          ) : (
+   759→                            <>
+   760→                              <RotateCcw className="w-3 h-3" />
+   761→                              Confirm Refund
+   762→                            </>
+   763→                          )}
+   764→                        </button>
+   765→                      </div>
+   766→                    </div>
+   767→                  )}
+   768→                </>
+   769→              )}
+   770→            </div>
+   771→
+   772→            {/* Footer */}
+   773→            {!refundSuccess && (
+   774→              <div className="px-6 py-4 border-t border-[#252529]/60 flex items-center justify-between flex-shrink-0">
+   775→                <span className="text-[10px] text-zinc-600">
+   776→                  Created {timeAgo(selectedTx.created_at)}
+   777→                </span>
+   778→                <div className="flex items-center gap-3">
+   779→                  {selectedTx.status === 'succeeded' && !showRefundForm && (
+   780→                    <button
+   781→                      onClick={() => setShowRefundForm(true)}
+   782→                      className="flex items-center gap-1 text-xs font-medium text-amber-400 hover:text-amber-300 transition-colors"
+   783→                    >
+   784→                      <RotateCcw className="w-3 h-3" />
+   785→                      Refund
+   786→                    </button>
+   787→                  )}
+   788→                  {selectedTx.status === 'succeeded' && (
+   789→                    <a
+   790→                      href={`/api/public/receipt/${selectedTx.id}/pdf`}
+   791→                      download
+   792→                      className="flex items-center gap-1 text-xs font-medium text-[#10B981] hover:text-[#34D399] transition-colors"
+   793→                      title="Download receipt PDF"
+   794→                    >
+   795→                      <Download className="w-3 h-3" />
+   796→                      Receipt
+   797→                    </a>
+   798→                  )}
+   799→                  {selectedTx.status === 'refunded' && (
+   800→                    <a
+   801→                      href={`/api/public/credit-note/${selectedTx.id}/pdf`}
+   802→                      download
+   803→                      className="flex items-center gap-1 text-xs font-medium text-amber-400 hover:text-amber-300 transition-colors"
+   804→                      title="Download credit note PDF"
+   805→                    >
+   806→                      <Download className="w-3 h-3" />
+   807→                      Credit Note
+   808→                    </a>
+   809→                  )}
+   810→                  {selectedTx.invoice_id && (
+   811→                    <button
+   812→                      onClick={() => {
+   813→                        const link = `${window.location.origin}/pay/${selectedTx.invoice_id}`;
+   814→                        if (navigator.clipboard) {
+   815→                          navigator.clipboard.writeText(link);
+   816→                        }
+   817→                        // Show brief feedback
+   818→                        const btn = document.activeElement as HTMLButtonElement;
+   819→                        if (btn) {
+   820→                          const orig = btn.innerHTML;
+   821→                          btn.innerHTML = '<span class="flex items-center gap-1 text-xs text-[#10B981]"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Copied!</span>';
+   822→                          setTimeout(() => { btn.innerHTML = orig; }, 2000);
+   823→                        }
+   824→                      }}
+   825→                      className="flex items-center gap-1 text-xs font-medium text-[#10B981] hover:text-[#34D399] transition-colors"
+   826→                      title="Copy payment link"
+   827→                    >
+   828→                      <Link2 className="w-3 h-3" />
+   829→                      Copy Link
+   830→                    </button>
+   831→                  )}
+   832→                  {selectedTx.invoice_id && (
+   833→                    <a
+   834→                      href={`/invoice/${selectedTx.invoice_id}`}
+   835→                      className="flex items-center gap-1 text-xs text-[#10B981] hover:text-[#34D399] transition-colors"
+   836→                    >
+   837→                      View invoice
+   838→                      <ExternalLink className="w-3 h-3" />
+   839→                    </a>
+   840→                  )}
+   841→                </div>
+   842→              </div>
+   843→            )}
+   844→          </div>
+   845→        </div>
+   846→      )}
+   847→    </div>
+   848→  );
+   849→}
+   850→
+   851→function DetailField({
+   852→  label,
+   853→  value,
+   854→  mono,
+   855→  link,
+   856→}: {
+   857→  label: string;
+   858→  value: string;
+   859→  mono?: boolean;
+   860→  link?: string | null;
+   861→}) {
+   862→  return (
+   863→    <div className="p-3 rounded-xl bg-[#0a0a0b] border border-[#252529]/50">
+   864→      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">{label}</p>
+   865→      {link ? (
+   866→        <a
+   867→          href={link}
+   868→          className={`text-sm text-[#10B981] hover:text-[#34D399] transition-colors ${mono ? 'font-mono' : ''}`}
+   869→        >
+   870→          {value}
+   871→        </a>
+   872→      ) : (
+   873→        <p className={`text-sm text-zinc-200 truncate ${mono ? 'font-mono' : ''}`}>{value}</p>
+   874→      )}
+   875→    </div>
+   876→  );
+   877→}
+   878→
