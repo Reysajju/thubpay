@@ -65,7 +65,7 @@ export default async function TransactionsPage() {
                 {transactions.length} payment records
               </span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight text-gradient-emerald">
               Transactions
             </h1>
             <p className="text-zinc-500 text-sm mt-1">

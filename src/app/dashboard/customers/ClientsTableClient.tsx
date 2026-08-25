@@ -280,7 +280,7 @@ export default function ClientsTableClient({ clients, stats }: Props) {
 
           {/* Stats Row */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6">
-            <div className="glass-card glass-card-hover rounded-2xl p-4 animate-stagger stagger-1">
+            <div className="glass-card glass-card-hover hover-lift rounded-2xl p-4 animate-stagger stagger-1">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-7 h-7 rounded-lg bg-cyan-500/10 flex items-center justify-center">
                   <Users className="w-3.5 h-3.5 text-cyan-400" />
@@ -292,7 +292,7 @@ export default function ClientsTableClient({ clients, stats }: Props) {
               <p className="text-xl font-black text-white animate-count">{stats.total}</p>
               <p className="text-[11px] text-zinc-500 mt-1">{stats.newThisMonth} new this month</p>
             </div>
-            <div className="glass-card glass-card-hover rounded-2xl p-4 animate-stagger stagger-2">
+            <div className="glass-card glass-card-hover hover-lift rounded-2xl p-4 animate-stagger stagger-2">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-7 h-7 rounded-lg bg-green-500/10 flex items-center justify-center">
                   <DollarSign className="w-3.5 h-3.5 text-green-400" />
@@ -304,7 +304,7 @@ export default function ClientsTableClient({ clients, stats }: Props) {
               <p className="text-xl font-black text-white animate-count">{toUsd(stats.totalSpend)}</p>
               <p className="text-[11px] text-zinc-500 mt-1">{toUsd(avgSpend)} avg / client</p>
             </div>
-            <div className="glass-card glass-card-hover rounded-2xl p-4 animate-stagger stagger-3">
+            <div className="glass-card glass-card-hover hover-lift rounded-2xl p-4 animate-stagger stagger-3">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-7 h-7 rounded-lg bg-[#10B981]/10 flex items-center justify-center">
                   <Repeat className="w-3.5 h-3.5 text-[#10B981]" />
@@ -318,7 +318,7 @@ export default function ClientsTableClient({ clients, stats }: Props) {
                 {stats.total > 0 ? Math.round((stats.repeatClients / stats.total) * 100) : 0}% retention
               </p>
             </div>
-            <div className="glass-card glass-card-hover rounded-2xl p-4 animate-stagger stagger-4">
+            <div className="glass-card glass-card-hover hover-lift rounded-2xl p-4 animate-stagger stagger-4">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-7 h-7 rounded-lg bg-green-500/10 flex items-center justify-center">
                   <TrendingUp className="w-3.5 h-3.5 text-green-400" />
@@ -473,7 +473,7 @@ export default function ClientsTableClient({ clients, stats }: Props) {
                   <div
                     key={client.id}
                     onClick={() => openClientDetail(client)}
-                    className={`glass-card glass-card-hover rounded-2xl p-5 cursor-pointer animate-stagger stagger-${Math.min(i + 1, 6)} group relative overflow-hidden`}
+                    className={`glass-card glass-card-hover hover-lift rounded-2xl p-5 cursor-pointer animate-stagger stagger-${Math.min(i + 1, 6)} group relative overflow-hidden`}
                   >
                     {/* Decorative gradient stripe on the left edge colored by stage */}
                     <span

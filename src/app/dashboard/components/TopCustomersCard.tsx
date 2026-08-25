@@ -11,7 +11,7 @@ export interface TopCustomer {
 
 interface Props {
   customers: TopCustomer[];
-  totalRevenue: number;
+  totalCustomerSpend: number;
 }
 
 function toUsd(cents: number) {
@@ -64,11 +64,13 @@ const DEFAULT_STYLE = {
   icon: 'text-zinc-400',
 };
 
-export default function TopCustomersCard({ customers, totalRevenue }: Props) {
+export default function TopCustomersCard({ customers, totalCustomerSpend }: Props) {
   const top = customers.slice(0, 5);
   const maxSpend = top.length > 0 ? Math.max(...top.map((c) => c.totalSpend)) : 0;
   const totalShown = top.reduce((sum, c) => sum + c.totalSpend, 0);
-  const revenueShare = totalRevenue > 0 ? Math.round((totalShown / totalRevenue) * 100) : 0;
+  const shareOfAllCustomers = totalCustomerSpend > 0
+    ? Math.round((totalShown / totalCustomerSpend) * 100)
+    : 0;
 
   return (
     <section className="glass-card rounded-3xl p-4 sm:p-6 animate-fadeIn hover-lift">
@@ -81,7 +83,7 @@ export default function TopCustomersCard({ customers, totalRevenue }: Props) {
           <div>
             <h2 className="text-lg font-bold text-white leading-none">Top Customers</h2>
             <p className="text-[10px] text-zinc-500 mt-1">
-              {top.length} customers · {revenueShare}% of total revenue
+              {top.length} customers · {shareOfAllCustomers}% of all customer spend
             </p>
           </div>
         </div>
@@ -98,7 +100,7 @@ export default function TopCustomersCard({ customers, totalRevenue }: Props) {
       <div className="flex items-center gap-3 mb-5 p-3 rounded-xl bg-black/20 border border-[#252529]/60">
         <div className="flex-1 min-w-0">
           <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-0.5">
-            Combined Revenue
+            Combined Spend
           </p>
           <p className="text-xl sm:text-2xl font-black text-white tabular-nums">
             {toUsdFull(totalShown)}
@@ -141,7 +143,9 @@ export default function TopCustomersCard({ customers, totalRevenue }: Props) {
             const rank = i + 1;
             const style = RANK_STYLES[i] || DEFAULT_STYLE;
             const pct = maxSpend > 0 ? Math.max(4, Math.round((c.totalSpend / maxSpend) * 100)) : 0;
-            const revenuePct = totalRevenue > 0 ? ((c.totalSpend / totalRevenue) * 100) : 0;
+            const customerSharePct = totalCustomerSpend > 0
+              ? (c.totalSpend / totalCustomerSpend) * 100
+              : 0;
             return (
               <li
                 key={`${c.email}-${i}`}
@@ -203,12 +207,12 @@ export default function TopCustomersCard({ customers, totalRevenue }: Props) {
                   <div className="mt-2.5 flex items-center gap-2">
                     <div className="flex-1 h-1.5 rounded-full bg-black/30 overflow-hidden">
                       <div
-                        className={`h-full rounded-full bg-gradient-to-r from-[#10B981] to-[#34D399] transition-all duration-700`}
+                        className="h-full rounded-full bg-gradient-to-r from-[#10B981] to-[#34D399] transition-all duration-700"
                         style={{ width: `${pct}%` }}
                       />
                     </div>
                     <span className="text-[10px] font-semibold text-zinc-400 tabular-nums w-12 text-right">
-                      {revenuePct.toFixed(1)}%
+                      {customerSharePct.toFixed(1)}%
                     </span>
                   </div>
                 </Link>
@@ -223,7 +227,7 @@ export default function TopCustomersCard({ customers, totalRevenue }: Props) {
         <p className="text-[11px] text-zinc-500 flex items-center gap-1.5">
           <TrendingUp className="w-3 h-3 text-emerald-400" />
           Top {top.length} customers drive{' '}
-          <span className="font-bold text-emerald-400">{revenueShare}%</span> of revenue
+          <span className="font-bold text-emerald-400">{shareOfAllCustomers}%</span> of customer spend
         </p>
         <Link
           href="/dashboard/customers"

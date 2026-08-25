@@ -519,11 +519,11 @@ function LoadingSkeleton() {
   return (
     <ol className="space-y-3" aria-label="Loading activity">
       {Array.from({ length: 5 }).map((_, i) => (
-        <li key={i} className="flex items-start gap-3 animate-pulse">
-          <span className="flex-shrink-0 w-8 h-8 rounded-full bg-[#1a1a1e] border border-[#1f1f23]" />
+        <li key={i} className="flex items-start gap-3 skeleton-shimmer">
+          <span className="flex-shrink-0 w-8 h-8 rounded-full skeleton-shimmer border border-[#1f1f23]" />
           <div className="flex-1 space-y-1.5">
-            <span className="block h-3 w-3/4 rounded bg-[#1a1a1e]" />
-            <span className="block h-2 w-1/3 rounded bg-[#1a1a1e]" />
+            <span className="block h-3 w-3/4 rounded skeleton-shimmer" />
+            <span className="block h-2 w-1/3 rounded skeleton-shimmer" />
           </div>
         </li>
       ))}

@@ -31,6 +31,8 @@ import {
   Upload,
   Shield,
   Bell,
+  Rocket,
+  RotateCcw,
 } from 'lucide-react';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 
@@ -121,6 +123,45 @@ export default function SettingsClient({ workspace, gateways: initialGateways }:
   const [gatewayLoading, setGatewayLoading] = useState(false);
   const [gatewayMessage, setGatewayMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [showSecret, setShowSecret] = useState(false);
+
+  // ── Onboarding reset state ─────────────────────────────────────
+  const [onboardingResetLoading, setOnboardingResetLoading] = useState(false);
+  const [onboardingResetMessage, setOnboardingResetMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [pendingResetOnboarding, setPendingResetOnboarding] = useState(false);
+
+  // ── Handle onboarding reset ─────────────────────────────────────
+  const handleResetOnboarding = async () => {
+    setOnboardingResetLoading(true);
+    setOnboardingResetMessage(null);
+    try {
+      const res = await fetch('/api/dashboard/onboarding/reset', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data?.success) {
+        setOnboardingResetMessage({
+          type: 'success',
+          text: 'Onboarding reset! Reloading dashboard…',
+        });
+        // Give the user a moment to see the success state, then
+        // bounce them to the dashboard so the walkthrough reappears.
+        setTimeout(() => {
+          window.location.href = '/dashboard';
+        }, 800);
+      } else {
+        setOnboardingResetMessage({
+          type: 'error',
+          text: data?.error || 'Failed to reset onboarding. Please try again.',
+        });
+      }
+    } catch (err: any) {
+      setOnboardingResetMessage({
+        type: 'error',
+        text: err?.message || 'Unexpected error while resetting onboarding.',
+      });
+    } finally {
+      setOnboardingResetLoading(false);
+      setPendingResetOnboarding(false);
+    }
+  };
 
   // ── Handle set target ─────────────────────────────────────────
   const handleSetTarget = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -344,6 +385,94 @@ export default function SettingsClient({ workspace, gateways: initialGateways }:
                   {nameLoading ? 'Saving...' : 'Save Changes'}
                 </button>
               </form>
+            </div>
+
+            {/* Onboarding & Walkthrough Card — Phase 5 carry-over #19 */}
+            <div className="glass-card rounded-2xl p-5 sm:p-6 hover-lift">
+              <div className="flex items-center gap-2.5 mb-5">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500/20 to-cyan-500/10 border border-emerald-500/20 flex items-center justify-center">
+                  <Rocket className="w-4 h-4 text-emerald-400" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-white">Onboarding & Walkthrough</h2>
+                  <p className="text-[11px] text-zinc-500">
+                    Re-trigger the setup checklist & walkthrough modal
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+                <div className="p-3 rounded-xl bg-[#0a0a0b] border border-[#252529]/50">
+                  <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
+                    Status
+                  </p>
+                  <p className="text-sm font-bold text-emerald-400 flex items-center gap-1.5">
+                    <span className="relative w-1.5 h-1.5 rounded-full bg-emerald-400">
+                      <span className="absolute inset-0 rounded-full bg-emerald-400/60 pulse-ring text-emerald-400" />
+                    </span>
+                    Completed
+                  </p>
+                </div>
+                <div className="p-3 rounded-xl bg-[#0a0a0b] border border-[#252529]/50">
+                  <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
+                    Steps
+                  </p>
+                  <p className="text-sm font-bold text-white">4 / 4</p>
+                </div>
+                <div className="p-3 rounded-xl bg-[#0a0a0b] border border-[#252529]/50">
+                  <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
+                    Progress
+                  </p>
+                  <p className="text-sm font-bold text-cyan-400">100%</p>
+                </div>
+              </div>
+
+              <p className="text-xs text-zinc-400 mb-4 leading-relaxed">
+                Onboarding is complete for this workspace. Resetting will
+                re-enable the dashboard checklist card and replay the
+                walkthrough modal — useful for demos, training new team
+                members, or re-checking that all setup steps are still valid.
+              </p>
+
+              {onboardingResetMessage && (
+                <div className={`p-3 rounded-xl border flex items-center gap-2 text-xs mb-4 ${
+                  onboardingResetMessage.type === 'success'
+                    ? 'bg-green-500/10 border-green-500/20 text-green-400'
+                    : 'bg-red-500/10 border-red-500/20 text-red-400'
+                }`}>
+                  {onboardingResetMessage.type === 'success'
+                    ? <CheckCircle className="w-3.5 h-3.5" />
+                    : <AlertTriangle className="w-3.5 h-3.5" />}
+                  {onboardingResetMessage.text}
+                </div>
+              )}
+
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPendingResetOnboarding(true)}
+                  disabled={onboardingResetLoading}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/15 hover:border-amber-500/50 text-amber-400 text-xs font-bold transition-all disabled:opacity-50 hover-lift"
+                >
+                  {onboardingResetLoading ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Resetting…
+                    </>
+                  ) : (
+                    <>
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      Reset onboarding
+                    </>
+                  )}
+                </button>
+                <a
+                  href="/dashboard"
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-[#2e2e33] bg-[#18181c] hover:border-[#3e3e44] hover:bg-[#1d1d22] text-zinc-200 text-xs font-semibold transition-all hover-lift"
+                >
+                  Back to dashboard
+                </a>
+              </div>
             </div>
 
             {/* Logo upload placeholder */}
@@ -762,6 +891,20 @@ export default function SettingsClient({ workspace, gateways: initialGateways }:
           variant="destructive"
           loading={deleteBusy}
           onConfirm={handleConfirmDeleteGateway}
+        />
+
+        <ConfirmDialog
+          open={pendingResetOnboarding}
+          onOpenChange={(open) => {
+            if (!open) setPendingResetOnboarding(false);
+          }}
+          title="Reset onboarding progress?"
+          description="This will mark all 4 onboarding steps as incomplete and replay the walkthrough modal on the dashboard. Existing data (gateways, invoices, clients) will not be affected. This is useful for demos and re-onboarding new team members."
+          confirmLabel="Reset & Replay"
+          cancelLabel="Cancel"
+          variant="default"
+          loading={onboardingResetLoading}
+          onConfirm={handleResetOnboarding}
         />
       </div>
     </section>

@@ -128,7 +128,7 @@ export default async function AuditLogPage({ searchParams }: AuditLogPageProps) 
             <ScrollText className="h-5 w-5 text-emerald-400" />
           </div>
           <div>
-            <h1 className="text-2xl font-black tracking-tight text-white">Audit Log</h1>
+            <h1 className="text-2xl font-black tracking-tight text-white text-gradient-emerald">Audit Log</h1>
             <p className="text-sm text-zinc-500">
               Track every invoice, refund, and payment action across your workspace.
             </p>

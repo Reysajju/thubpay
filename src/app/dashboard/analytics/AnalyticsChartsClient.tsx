@@ -259,7 +259,7 @@ export default function AnalyticsChartsClient({ invoiceStats, workspaceId }: Pro
           <div className="flex items-center justify-center py-24">
             <div className="text-center">
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-[#10B981]/10 mb-4">
-                <Activity className="w-6 h-6 text-[#10B981] animate-pulse" />
+                <Activity className="w-6 h-6 text-emerald-400/70" />
               </div>
               <p className="text-zinc-400 text-sm">Loading analytics...</p>
             </div>
@@ -433,7 +433,7 @@ export default function AnalyticsChartsClient({ invoiceStats, workspaceId }: Pro
                 {[0, 1, 2, 3].map((i) => (
                   <div
                     key={i}
-                    className="flex items-start gap-2.5 p-3 rounded-xl border border-[#252529] bg-[#1a1a1f]/40 animate-pulse"
+                    className="flex items-start gap-2.5 p-3 rounded-xl border border-[#252529] bg-[#1a1a1f]/40 skeleton-shimmer"
                   >
                     <div className="w-4 h-4 rounded bg-[#252529] flex-shrink-0 mt-0.5" />
                     <div className="flex-1 space-y-1.5">

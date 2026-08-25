@@ -86,6 +86,11 @@ export default async function DashboardPage() {
   const notOpenedPct = viewStats.sentCount > 0 ? 100 - openedPct : 0;
   const recentOpensTop5 = viewStats.recentOpens.slice(0, 5);
 
+  const totalCustomerSpend = clients.reduce(
+    (sum, c) => sum + (c.total_spend_cents || 0),
+    0
+  );
+
   const clientOptions = clients.map((c) => ({
     id: c.id,
     name: c.name,
@@ -158,7 +163,9 @@ export default async function DashboardPage() {
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="flex items-center gap-1.5 text-[11px] font-semibold text-green-400 bg-green-500/10 px-2 py-0.5 rounded-full border border-green-500/20">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-dot-pulse" />
+                <span className="relative w-1.5 h-1.5 rounded-full bg-green-400">
+                  <span className="absolute inset-0 rounded-full bg-green-400/60 pulse-ring text-green-400" />
+                </span>
                 All systems operational
               </span>
             </div>
@@ -524,6 +531,18 @@ export default async function DashboardPage() {
             </ul>
           </div>
         )}
+
+        {/* Top Customers + Payment Methods — side-by-side */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mt-6 animate-fadeIn">
+          <TopCustomersCard
+            customers={topCustomers as TopCustomer[]}
+            totalCustomerSpend={totalCustomerSpend}
+          />
+          <PaymentMethodsCard
+            breakdown={txStats.byGateway}
+            totalVolume={txStats.totalVolume}
+          />
+        </div>
       </div>
     </section>
   );

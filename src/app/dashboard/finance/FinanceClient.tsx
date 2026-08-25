@@ -184,7 +184,7 @@ export default function FinanceClient({ workspaceId }: Props) {
 
         {/* Key Financial Metrics */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
-          <div className="glass-card glass-card-hover rounded-2xl p-4 sm:p-5 animate-stagger stagger-1">
+          <div className="glass-card glass-card-hover hover-lift rounded-2xl p-4 sm:p-5 animate-stagger stagger-1">
             <div className="flex items-start justify-between mb-3">
               <div className="w-9 h-9 rounded-xl bg-green-500/10 flex items-center justify-center">
                 <DollarSign className="w-4 h-4 text-green-400" />
@@ -202,7 +202,7 @@ export default function FinanceClient({ workspaceId }: Props) {
             <p className="text-[11px] text-zinc-500 mt-1">From paid invoices</p>
           </div>
 
-          <div className="glass-card glass-card-hover rounded-2xl p-4 sm:p-5 animate-stagger stagger-2">
+          <div className="glass-card glass-card-hover hover-lift rounded-2xl p-4 sm:p-5 animate-stagger stagger-2">
             <div className="flex items-start justify-between mb-3">
               <div className="w-9 h-9 rounded-xl bg-[#10B981]/10 flex items-center justify-center">
                 <Wallet className="w-4 h-4 text-[#10B981]" />
@@ -221,7 +221,7 @@ export default function FinanceClient({ workspaceId }: Props) {
             <p className="text-[11px] text-zinc-500 mt-1">In — Out</p>
           </div>
 
-          <div className="glass-card glass-card-hover rounded-2xl p-4 sm:p-5 animate-stagger stagger-3">
+          <div className="glass-card glass-card-hover hover-lift rounded-2xl p-4 sm:p-5 animate-stagger stagger-3">
             <div className="flex items-start justify-between mb-3">
               <div className="w-9 h-9 rounded-xl bg-cyan-500/10 flex items-center justify-center">
                 <CreditCard className="w-4 h-4 text-cyan-400" />
@@ -236,7 +236,7 @@ export default function FinanceClient({ workspaceId }: Props) {
             <p className="text-[11px] text-zinc-500 mt-1">Pending invoices</p>
           </div>
 
-          <div className="glass-card glass-card-hover rounded-2xl p-4 sm:p-5 animate-stagger stagger-4">
+          <div className="glass-card glass-card-hover hover-lift rounded-2xl p-4 sm:p-5 animate-stagger stagger-4">
             <div className="flex items-start justify-between mb-3">
               <div className="w-9 h-9 rounded-xl bg-amber-500/10 flex items-center justify-center">
                 <Percent className="w-4 h-4 text-amber-400" />

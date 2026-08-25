@@ -256,7 +256,7 @@ export default function TransactionsTableClient({ transactions, gateways, stats 
     <div className="space-y-6">
       {/* Stats Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-        <div className="glass-card glass-card-hover rounded-2xl p-4 animate-stagger stagger-1">
+        <div className="glass-card glass-card-hover hover-lift rounded-2xl p-4 animate-stagger stagger-1">
           <div className="flex items-center gap-2 mb-2">
             <div className="w-7 h-7 rounded-lg bg-green-500/10 flex items-center justify-center">
               <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
@@ -269,7 +269,7 @@ export default function TransactionsTableClient({ transactions, gateways, stats 
           <p className="text-[11px] text-zinc-500 mt-1">{stats.succeededCount} successful</p>
         </div>
 
-        <div className="glass-card glass-card-hover rounded-2xl p-4 animate-stagger stagger-2">
+        <div className="glass-card glass-card-hover hover-lift rounded-2xl p-4 animate-stagger stagger-2">
           <div className="flex items-center gap-2 mb-2">
             <div className="w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center">
               <Clock className="w-3.5 h-3.5 text-amber-400" />
@@ -282,7 +282,7 @@ export default function TransactionsTableClient({ transactions, gateways, stats 
           <p className="text-[11px] text-zinc-500 mt-1">awaiting settlement</p>
         </div>
 
-        <div className="glass-card glass-card-hover rounded-2xl p-4 animate-stagger stagger-3">
+        <div className="glass-card glass-card-hover hover-lift rounded-2xl p-4 animate-stagger stagger-3">
           <div className="flex items-center gap-2 mb-2">
             <div className="w-7 h-7 rounded-lg bg-green-500/10 flex items-center justify-center">
               <span className="text-[10px] font-bold text-green-400">{stats.successRate}%</span>
@@ -295,7 +295,7 @@ export default function TransactionsTableClient({ transactions, gateways, stats 
           <p className="text-[11px] text-zinc-500 mt-1">{stats.failedCount} failed</p>
         </div>
 
-        <div className="glass-card glass-card-hover rounded-2xl p-4 animate-stagger stagger-4">
+        <div className="glass-card glass-card-hover hover-lift rounded-2xl p-4 animate-stagger stagger-4">
           <div className="flex items-center gap-2 mb-2">
             <div className="w-7 h-7 rounded-lg bg-cyan-500/10 flex items-center justify-center">
               <span className="text-[10px] font-bold text-cyan-400">Avg</span>
