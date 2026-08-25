@@ -7,12 +7,18 @@ import {
   getMonthlyRevenue,
   getClients,
   getInvoiceViewStats,
+  getOnboardingState,
+  getTopCustomers,
+  getTransactionStats,
 } from '@/lib/demo-data';
 import DashboardActions from './components/DashboardActions';
 import DashboardOverviewCharts from './components/DashboardOverviewCharts';
 import ManualPaidButton from './components/ManualPaidButton';
 import MonthlyTargetWidget from './components/MonthlyTargetWidget';
 import RecentActivityTimeline from './components/RecentActivityTimeline';
+import OnboardingChecklistCard from './components/OnboardingChecklistCard';
+import TopCustomersCard, { TopCustomer } from './components/TopCustomersCard';
+import PaymentMethodsCard from './components/PaymentMethodsCard';
 import { DollarSign, Clock, CheckCircle2, Users, TrendingUp, ArrowUpRight, FileText, Eye, MailCheck, Inbox, Plus, Calendar, CalendarDays, CalendarRange, Receipt } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -65,12 +71,15 @@ export default async function DashboardPage() {
   }
   const { workspaceId, workspace, user } = ctx.context;
 
-  const [stats, recentInvoices, monthlyRevenue, clients, viewStats] = await Promise.all([
+  const [stats, recentInvoices, monthlyRevenue, clients, viewStats, onboardingState, topCustomers, txStats] = await Promise.all([
     getDashboardStats(workspaceId),
     getRecentInvoices(workspaceId, 8),
     getMonthlyRevenue(workspaceId),
     getClients(workspaceId),
     getInvoiceViewStats(workspaceId),
+    getOnboardingState(workspaceId),
+    getTopCustomers(workspaceId),
+    getTransactionStats(workspaceId),
   ]);
 
   const openedPct = viewStats.openRate;
@@ -203,7 +212,7 @@ export default async function DashboardPage() {
             return (
               <div
                 key={chip.label}
-                className={`relative overflow-hidden rounded-2xl p-3.5 border bg-gradient-to-br ${chip.accent} animate-stagger stagger-${i + 1} stat-card-hover`}
+                className={`relative overflow-hidden rounded-2xl p-3.5 border bg-gradient-to-br ${chip.accent} animate-stagger stagger-${i + 1} stat-card-hover hover-lift`}
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
@@ -222,6 +231,16 @@ export default async function DashboardPage() {
           })}
         </div>
 
+        {/* Onboarding Checklist — only shown when incomplete */}
+        {!onboardingState.completed && (
+          <div className="mb-6 animate-fadeIn">
+            <OnboardingChecklistCard
+              state={onboardingState}
+              workspaceName={workspace.name}
+            />
+          </div>
+        )}
+
         {/* Stats Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-8">
           {statCards.map((card, i) => {
@@ -235,7 +254,7 @@ export default async function DashboardPage() {
             return (
               <div
                 key={card.label}
-                className={`glass-card glass-card-hover stat-card-hover glass-card-press rounded-2xl p-4 sm:p-5 animate-stagger stagger-${i + 1} relative overflow-hidden`}
+                className={`glass-card glass-card-hover stat-card-hover glass-card-press hover-lift rounded-2xl p-4 sm:p-5 animate-stagger stagger-${i + 1} relative overflow-hidden`}
               >
                 {/* Decorative gradient blob in the corner */}
                 <div

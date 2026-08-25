@@ -18,6 +18,7 @@ import {
   ExternalLink,
   CreditCard,
   Clock,
+  Activity,
 } from 'lucide-react';
 import AddClientModal from '../components/AddClientModal';
 
@@ -663,6 +664,155 @@ export default function ClientsTableClient({ clients, stats }: Props) {
                   </p>
                 </div>
               </div>
+            </div>
+
+            {/* Lifecycle Insights */}
+            <div className="px-6 py-5 border-b border-[#252529]/50">
+              <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <Activity className="w-3 h-3" />
+                Lifecycle Insights
+              </h4>
+
+              {(() => {
+                const stage = computeStage(selectedClient);
+                const cfg = STAGE_CONFIG[stage];
+
+                // Compute days-since-payment
+                const DAY = 24 * 60 * 60 * 1000;
+                const lastPayMs = selectedClient.last_payment_at
+                  ? new Date(selectedClient.last_payment_at).getTime()
+                  : null;
+                const daysSince = lastPayMs
+                  ? Math.max(0, Math.floor((Date.now() - lastPayMs) / DAY))
+                  : null;
+
+                // Compute 6-month sparkline buckets of paid invoices
+                const now = new Date();
+                const buckets: { label: string; count: number }[] = [];
+                for (let i = 5; i >= 0; i--) {
+                  const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                  const label = d.toLocaleDateString('en-US', { month: 'short' });
+                  const monthStart = d.getTime();
+                  const monthEnd = new Date(
+                    d.getFullYear(),
+                    d.getMonth() + 1,
+                    1
+                  ).getTime();
+                  const count = (clientInvoices || []).filter(
+                    (inv) =>
+                      inv.status === 'paid' &&
+                      new Date(inv.created_at).getTime() >= monthStart &&
+                      new Date(inv.created_at).getTime() < monthEnd
+                  ).length;
+                  buckets.push({ label, count });
+                }
+                const maxBucket = Math.max(1, ...buckets.map((b) => b.count));
+
+                // Stage-specific suggested action
+                const stageAction: Record<LifecycleStage, { text: string; cta: string; href: string }> = {
+                  new: {
+                    text: 'New customer — send a welcome email to encourage repeat business.',
+                    cta: 'Send welcome email',
+                    href: `mailto:${selectedClient.email ?? ''}?subject=Welcome%20to%20${encodeURIComponent(selectedClient.company || 'our service')}`,
+                  },
+                  active: {
+                    text: 'Engaged customer — consider offering a loyalty discount or upsell.',
+                    cta: 'Create invoice',
+                    href: '/dashboard',
+                  },
+                  at_risk: {
+                    text: 'Activity slowing down — send a re-engagement email or promotion.',
+                    cta: 'Re-engage customer',
+                    href: `mailto:${selectedClient.email ?? ''}?subject=We%20miss%20you!`,
+                  },
+                  churned: {
+                    text: 'This customer has been inactive for over 60 days. Send a win-back campaign.',
+                    cta: 'Win back customer',
+                    href: `mailto:${selectedClient.email ?? ''}?subject=Let%27s%20reconnect`,
+                  },
+                  lead: {
+                    text: 'Lead with no transactions yet — send your first invoice to convert them.',
+                    cta: 'Create first invoice',
+                    href: '/dashboard',
+                  },
+                };
+                const action = stageAction[stage];
+
+                return (
+                  <div className="space-y-4">
+                    {/* Stage + suggested action */}
+                    <div className={`p-3 rounded-xl border ${cfg.chip}`}>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className={`w-2 h-2 rounded-full ${cfg.dot} animate-pulse`} />
+                        <span className="text-xs font-bold uppercase tracking-wider">
+                          {cfg.label}
+                        </span>
+                        {daysSince !== null && (
+                          <span className="text-[10px] text-zinc-500 ml-auto">
+                            {daysSince === 0 ? 'last paid today' : `last paid ${daysSince}d ago`}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-zinc-300 leading-relaxed mb-2.5">
+                        {action.text}
+                      </p>
+                      {selectedClient.email && (
+                        <a
+                          href={action.href}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[11px] font-semibold text-zinc-200 transition-colors"
+                        >
+                          <Mail className="w-3 h-3" />
+                          {action.cta}
+                          <ChevronRight className="w-3 h-3" />
+                        </a>
+                      )}
+                    </div>
+
+                    {/* 6-month payment sparkline */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                          Paid Invoices · Last 6 Months
+                        </span>
+                        <span className="text-[10px] text-zinc-500 tabular-nums">
+                          {buckets.reduce((s, b) => s + b.count, 0)} total
+                        </span>
+                      </div>
+                      {loadingDetail ? (
+                        <div className="flex items-end justify-between gap-1.5 h-12">
+                          {[0, 1, 2, 3, 4, 5].map((i) => (
+                            <div key={i} className="flex-1 h-full rounded bg-[#1a1a1f] animate-pulse" />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="flex items-end justify-between gap-1.5 h-12">
+                          {buckets.map((b, i) => {
+                            const heightPct = (b.count / maxBucket) * 100;
+                            const isCurrent = i === buckets.length - 1;
+                            return (
+                              <div
+                                key={b.label}
+                                className="flex-1 flex flex-col items-center gap-1 group"
+                              >
+                                <div
+                                  className={`w-full rounded-t-sm transition-all duration-300 ${
+                                    isCurrent
+                                      ? 'bg-gradient-to-t from-[#10B981]/60 to-[#34D399]'
+                                      : 'bg-[#10B981]/30 group-hover:bg-[#10B981]/50'
+                                  }`}
+                                  style={{ height: `${Math.max(heightPct, b.count > 0 ? 12 : 4)}%` }}
+                                  title={`${b.count} paid in ${b.label}`}
+                                />
+                                <span className="text-[9px] text-zinc-600">{b.label}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Invoice history */}

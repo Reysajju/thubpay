@@ -1,8 +1,22 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bell, Search, X, Check, CheckCheck } from 'lucide-react';
+import {
+  Bell,
+  Search,
+  X,
+  Check,
+  CheckCheck,
+  DollarSign,
+  CheckCircle2,
+  Info,
+  AlertTriangle,
+  XCircle,
+  Scale,
+  BellOff,
+  type LucideIcon,
+} from 'lucide-react';
 
 interface Notification {
   id: string;
@@ -13,22 +27,57 @@ interface Notification {
   created_at: string;
 }
 
-const TYPE_ICONS: Record<string, string> = {
-  payment: '💰',
-  info: 'ℹ️',
-  success: '✅',
-  warning: '⚠️',
-  error: '❌',
-  dispute: '⚖️',
+// ─── Per-type icon + color config (Lucide icons, no emojis) ───
+interface TypeConfig {
+  Icon: LucideIcon;
+  color: string; // tailwind classes for icon container (border + bg) and icon text color
+}
+
+const TYPE_CONFIG: Record<string, TypeConfig> = {
+  payment: { Icon: DollarSign, color: 'border-[#10B981]/30 bg-[#10B981]/5 text-[#10B981]' },
+  success: { Icon: CheckCircle2, color: 'border-[#10B981]/30 bg-[#10B981]/5 text-[#10B981]' },
+  info: { Icon: Info, color: 'border-cyan-500/30 bg-cyan-500/5 text-cyan-400' },
+  warning: { Icon: AlertTriangle, color: 'border-amber-500/30 bg-amber-500/5 text-amber-400' },
+  error: { Icon: XCircle, color: 'border-red-500/30 bg-red-500/5 text-red-400' },
+  dispute: { Icon: Scale, color: 'border-red-500/30 bg-red-500/5 text-red-400' },
 };
 
-const TYPE_COLORS: Record<string, string> = {
-  payment: 'border-green-500/30 bg-green-500/5',
-  info: 'border-cyan-500/30 bg-cyan-500/5',
-  success: 'border-green-500/30 bg-green-500/5',
-  warning: 'border-amber-500/30 bg-amber-500/5',
-  error: 'border-red-500/30 bg-red-500/5',
-  dispute: 'border-red-500/30 bg-red-500/5',
+const FALLBACK_CONFIG: TypeConfig = {
+  Icon: Bell,
+  color: 'border-zinc-500/30 bg-zinc-500/5 text-zinc-400',
+};
+
+function getTypeConfig(type: string): TypeConfig {
+  return TYPE_CONFIG[type] ?? FALLBACK_CONFIG;
+}
+
+// ─── Filter pills ───
+type FilterKey = 'all' | 'unread' | 'payment' | 'alerts' | 'info';
+
+interface FilterDef {
+  key: FilterKey;
+  label: string;
+  match: (n: Notification) => boolean;
+}
+
+const FILTERS: FilterDef[] = [
+  { key: 'all', label: 'All', match: () => true },
+  { key: 'unread', label: 'Unread', match: (n) => !n.is_read },
+  { key: 'payment', label: 'Payment', match: (n) => n.type === 'payment' || n.type === 'success' },
+  {
+    key: 'alerts',
+    label: 'Alerts',
+    match: (n) => n.type === 'warning' || n.type === 'error' || n.type === 'dispute',
+  },
+  { key: 'info', label: 'Info', match: (n) => n.type === 'info' },
+];
+
+const EMPTY_STATES: Record<FilterKey, { title: string; subtitle: string }> = {
+  all: { title: 'No notifications yet', subtitle: 'Payment alerts and activity will appear here' },
+  unread: { title: 'All caught up!', subtitle: "You've read everything. New alerts will appear here." },
+  payment: { title: 'No payment notifications', subtitle: 'Payment alerts will appear here when invoices are paid.' },
+  alerts: { title: 'No alerts', subtitle: 'Warnings and errors will appear here if anything goes wrong.' },
+  info: { title: 'No info notifications', subtitle: 'General activity will appear here.' },
 };
 
 function timeAgo(iso: string): string {
@@ -44,10 +93,13 @@ function timeAgo(iso: string): string {
 }
 
 export function NotificationsBell() {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [filter, setFilter] = useState<FilterKey>('all');
+  const [snoozedIds, setSnoozedIds] = useState<Set<string>>(new Set());
   const ref = useRef<HTMLDivElement>(null);
 
   const fetchNotifications = useCallback(async () => {
@@ -56,7 +108,7 @@ export function NotificationsBell() {
       const res = await fetch('/api/dashboard/settings/notifications');
       if (res.ok) {
         const data = await res.json();
-        const notifs = data.notifications || [];
+        const notifs: Notification[] = data.notifications || [];
         setNotifications(notifs);
         setUnreadCount(notifs.filter((n: Notification) => !n.is_read).length);
       }
@@ -87,11 +139,9 @@ export function NotificationsBell() {
 
   const markAllRead = async () => {
     // ── Optimistic update ──
-    // Capture the previous state so we can roll back on failure.
     const prevNotifications = notifications;
     const prevUnreadCount = unreadCount;
 
-    // Instantly update the UI
     setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
     setUnreadCount(0);
 
@@ -102,7 +152,6 @@ export function NotificationsBell() {
         body: JSON.stringify({ markAllRead: true }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      // Success — state is already updated, nothing more to do.
     } catch {
       // Roll back on failure
       setNotifications(prevNotifications);
@@ -112,15 +161,12 @@ export function NotificationsBell() {
 
   const markOneRead = async (id: string) => {
     // ── Optimistic update ──
-    // Capture previous state for rollback.
     const prevNotifications = notifications;
     const prevUnreadCount = unreadCount;
 
-    // Only update if the notification is currently unread
     const target = notifications.find((n) => n.id === id);
     if (!target || target.is_read) return;
 
-    // Instantly update the UI
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
     );
@@ -133,13 +179,44 @@ export function NotificationsBell() {
         body: JSON.stringify({ is_read: true }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      // Success — state is already updated, nothing more to do.
     } catch {
       // Roll back on failure
       setNotifications(prevNotifications);
       setUnreadCount(prevUnreadCount);
     }
   };
+
+  // Snooze a notification for this session only (local state)
+  const snooze = (id: string) => {
+    setSnoozedIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  };
+
+  const resetSnoozes = () => setSnoozedIds(new Set());
+
+  // Per-filter counts (excluding snoozed) for the pill badges
+  const counts = useMemo(() => {
+    const visible = notifications.filter((n) => !snoozedIds.has(n.id));
+    return {
+      all: visible.length,
+      unread: visible.filter((n) => !n.is_read).length,
+      payment: visible.filter((n) => n.type === 'payment' || n.type === 'success').length,
+      alerts: visible.filter((n) => n.type === 'warning' || n.type === 'error' || n.type === 'dispute').length,
+      info: visible.filter((n) => n.type === 'info').length,
+    } as Record<FilterKey, number>;
+  }, [notifications, snoozedIds]);
+
+  // Filtered + snoozed-excluded + capped at 20 for the visible list
+  const filtered = useMemo(() => {
+    const f = FILTERS.find((x) => x.key === filter) ?? FILTERS[0];
+    return notifications
+      .filter((n) => !snoozedIds.has(n.id))
+      .filter(f.match)
+      .slice(0, 20);
+  }, [notifications, filter, snoozedIds]);
 
   return (
     <div ref={ref} className="relative">
@@ -179,60 +256,172 @@ export function NotificationsBell() {
             </button>
           </div>
 
+          {/* Filter pills */}
+          <div className="flex items-center gap-1.5 px-3 py-2 border-b border-[#252529]/60 overflow-x-auto custom-scrollbar">
+            {FILTERS.map((f) => {
+              const active = filter === f.key;
+              const count = counts[f.key];
+              return (
+                <button
+                  key={f.key}
+                  onClick={() => setFilter(f.key)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap border transition-all ${
+                    active
+                      ? 'bg-[#10B981]/15 text-[#10B981] border-[#10B981]/30'
+                      : 'bg-transparent text-zinc-500 border-[#252529]/60 hover:text-zinc-300 hover:border-zinc-700'
+                  }`}
+                >
+                  {f.label}
+                  <span
+                    className={`px-1.5 rounded-full text-[9px] leading-tight ${
+                      active ? 'bg-[#10B981]/20 text-[#10B981]' : 'bg-white/5 text-zinc-500'
+                    }`}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
           {/* List */}
           <div className="max-h-96 overflow-y-auto custom-scrollbar">
+            {/* Snooze pill (small, centered, top of list) */}
+            {snoozedIds.size > 0 && (
+              <div className="flex justify-center px-3 pt-2">
+                <button
+                  type="button"
+                  onClick={resetSnoozes}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/25 hover:bg-amber-500/20 hover:text-amber-300 transition-colors"
+                  title={`Unsnooze ${snoozedIds.size} hidden notification${snoozedIds.size === 1 ? '' : 's'}`}
+                >
+                  <BellOff className="w-3 h-3" />
+                  <span>{snoozedIds.size} snoozed</span>
+                  <span className="text-amber-500/60">·</span>
+                  <span className="font-semibold">Reset</span>
+                </button>
+              </div>
+            )}
+
             {loading && notifications.length === 0 ? (
               <div className="px-4 py-8 text-center">
                 <div className="inline-block w-5 h-5 border-2 border-[#10B981]/30 border-t-[#10B981] rounded-full animate-spin" />
                 <p className="text-xs text-zinc-500 mt-2">Loading...</p>
               </div>
-            ) : notifications.length === 0 ? (
+            ) : filtered.length === 0 ? (
               <div className="px-4 py-12 text-center">
                 <Bell className="w-8 h-8 text-zinc-700 mx-auto mb-2" />
-                <p className="text-sm text-zinc-500">No notifications yet</p>
-                <p className="text-[11px] text-zinc-600 mt-1">
-                  Payment alerts and activity will appear here
-                </p>
+                <p className="text-sm text-zinc-500">{EMPTY_STATES[filter].title}</p>
+                <p className="text-[11px] text-zinc-600 mt-1">{EMPTY_STATES[filter].subtitle}</p>
               </div>
             ) : (
-              notifications.slice(0, 20).map((n) => (
-                <button
-                  key={n.id}
-                  onClick={() => !n.is_read && markOneRead(n.id)}
-                  className={`w-full text-left px-4 py-3 border-b border-[#252529]/30 transition-all duration-200 hover:bg-white/[0.03] group ${
-                    !n.is_read ? 'bg-[#10B981]/[0.04]' : 'opacity-60'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div
-                      className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-sm border transition-all ${
-                        TYPE_COLORS[n.type] || 'border-zinc-500/30 bg-zinc-500/5'
-                      }`}
-                    >
-                      {TYPE_ICONS[n.type] || '🔔'}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className={`text-xs font-semibold truncate transition-colors ${n.is_read ? 'text-zinc-400' : 'text-zinc-200'}`}>
-                          {n.title}
-                        </p>
-                        {!n.is_read && (
-                          <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-[#10B981] animate-pulse" />
-                        )}
+              filtered.map((n) => {
+                const cfg = getTypeConfig(n.type);
+                const { Icon } = cfg;
+                return (
+                  <div
+                    key={n.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      if (!n.is_read) markOneRead(n.id);
+                    }}
+                    onKeyDown={(e) => {
+                      if ((e.key === 'Enter' || e.key === ' ') && !n.is_read) {
+                        e.preventDefault();
+                        markOneRead(n.id);
+                      }
+                    }}
+                    className={`w-full text-left px-4 py-3 border-b border-[#252529]/30 border-l-[3px] transition-all duration-200 hover:bg-white/[0.03] group cursor-pointer ${
+                      !n.is_read
+                        ? 'bg-[#10B981]/[0.04] border-l-[#10B981]'
+                        : 'border-l-transparent opacity-60'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div
+                        className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center border transition-all ${cfg.color}`}
+                      >
+                        <Icon className="w-4 h-4" />
                       </div>
-                      {n.body && (
-                        <p className="text-[11px] text-zinc-400 mt-0.5 line-clamp-2">
-                          {n.body}
-                        </p>
-                      )}
-                      <p className="text-[10px] text-zinc-600 mt-1">
-                        {timeAgo(n.created_at)}
-                      </p>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          {!n.is_read && (
+                            <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-[#10B981] animate-pulse" />
+                          )}
+                          <p
+                            className={`text-xs font-semibold truncate transition-colors ${
+                              n.is_read ? 'text-zinc-400' : 'text-zinc-200'
+                            }`}
+                          >
+                            {n.title}
+                          </p>
+                        </div>
+                        {n.body && (
+                          <p className="text-[11px] text-zinc-400 mt-0.5 line-clamp-2">
+                            {n.body}
+                          </p>
+                        )}
+                        {/* Per-notification action footer */}
+                        <div className="flex items-center justify-between mt-1.5 gap-2">
+                          <p className="text-[10px] text-zinc-600">{timeAgo(n.created_at)}</p>
+                          <div
+                            className={`flex items-center gap-1 transition-opacity ${
+                              n.is_read ? 'opacity-0 group-hover:opacity-100' : 'opacity-100'
+                            }`}
+                          >
+                            {!n.is_read && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  markOneRead(n.id);
+                                }}
+                                title="Mark as read"
+                                aria-label="Mark as read"
+                                className="flex items-center justify-center w-6 h-6 rounded-md text-zinc-500 hover:text-[#10B981] hover:bg-[#10B981]/10 transition-colors"
+                              >
+                                <Check className="w-3 h-3" />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                snooze(n.id);
+                              }}
+                              title="Snooze 1 hour"
+                              aria-label="Snooze 1 hour"
+                              className="flex items-center justify-center w-6 h-6 rounded-md text-zinc-500 hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
+                            >
+                              <BellOff className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </button>
-              ))
+                );
+              })
             )}
+          </div>
+
+          {/* Footer summary */}
+          <div className="flex items-center justify-between px-4 py-2.5 border-t border-[#252529]/60 text-[11px] text-zinc-500">
+            <span>
+              {filter === 'all'
+                ? `${unreadCount} unread`
+                : `Showing ${filtered.length} of ${notifications.length}`}
+            </span>
+            <button
+              onClick={() => {
+                setOpen(false);
+                router.push('/dashboard/settings?tab=notifications');
+              }}
+              className="px-2 py-1 rounded-md text-[11px] font-semibold bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/30 hover:bg-[#10B981]/25 transition-colors"
+            >
+              View all
+            </button>
           </div>
         </div>
       )}

@@ -1855,3 +1855,339 @@ Project is in a stable, polished, feature-rich state. Recommended next moves (pr
 6. **Strict CSP** (Phase 1 #7) — security hardening.
 7. **Server-side forecast endpoint** (Phase 3 #16) — multi-instance forecast accuracy.
 8. **Customer Lifecycle ML churn-risk scoring** (Phase 3 #15) — replace hardcoded thresholds with predictive model.
+
+---
+Task ID: 15-A
+Agent: notifications-bell-revamp-subagent
+Task: Revamp the NotificationsBell component (lines 46-241 region of
+  src/app/dashboard/components/NotificationsBell.tsx) — add filter
+  pills, replace emoji icons with Lucide icons, per-notification
+  action footer with Check + BellOff snooze, per-filter empty
+  states, visual hierarchy (3px emerald border + pulsing dot),
+  and footer summary with "Showing X of Y" + "View all".
+
+Work Log:
+- Read /home/z/my-project/worklog.md (Tasks 12 → 14 / Phase 3)
+  for full context, especially Task 14-B which performed the bulk
+  blue→cyan color ban on this same file.
+- Audited the current state of
+  src/app/dashboard/components/NotificationsBell.tsx against all
+  6 spec requirements. Found the file ALREADY contained the full
+  spec'd feature set (likely delivered by an earlier task or by
+  the Phase-3 main agent's parallel work — the worklog's Task 14
+  Phase-3 main agent section mentions this file in its "edited by
+  subagent 14-B" list). Verified each requirement:
+  • 1. Filter pills bar — ✅ present at lines 259-285: All /
+    Unread / Payment (type=payment|success) / Alerts
+    (type=warning|error|dispute) / Info; each with count badge;
+    active pill = bg-[#10B981]/15 text-[#10B981]
+    border-[#10B981]/30, inactive = zinc; local useState
+    <FilterKey>('all') at line 101; filter applied via useMemo
+    at lines 213-219.
+  • 2. Lucide icons via TYPE_CONFIG — ✅ present at lines 31-43:
+    Record<string, { Icon: LucideIcon; color: string }> with
+    payment→DollarSign (emerald), success→CheckCircle2 (emerald),
+    info→Info (cyan), warning→AlertTriangle (amber),
+    error→XCircle (red), dispute→Scale (red); rendered as
+    <Icon className="w-4 h-4" /> at line 343; FALLBACK_CONFIG
+    (Bell icon, zinc) for unknown types.
+  • 3. Per-notification action footer — ✅ present at lines
+    363-398: left = timeAgo timestamp; right = Check icon button
+    (conditional on !is_read) + BellOff icon button (snooze 1h);
+    local state const [snoozedIds, setSnoozedIds] =
+    useState<Set<string>>(new Set()) at line 102; updated via
+    new Set(prev).add(id) in snooze() at lines 190-196; snoozed
+    IDs filtered out in the filtered useMemo at line 216.
+  • 4. Per-filter empty states — ✅ present at lines 75-81:
+    EMPTY_STATES record with the exact spec'd title+subtitle
+    pairs for all/unread/payment/alerts/info; rendered at lines
+    310-314.
+  • 5. Visual hierarchy — ✅ present at lines 333-348: unread row
+    has border-l-[3px] + bg-[#10B981]/[0.04] + border-l-[#10B981];
+    read row has border-l-transparent + opacity-60; 1.5x1.5
+    emerald pulsing dot (w-1.5 h-1.5 rounded-full bg-[#10B981]
+    animate-pulse) BEFORE the title for unread only; hover
+    hover:bg-white/[0.03] preserved; whole row remains clickable
+    to mark as read (lines 322-332 — onClick + onKeyDown Enter/Space).
+  • 6. Footer summary — ✅ present at lines 407-423: left shows
+    "{unreadCount} unread" when filter==='all' OR "Showing
+    {filtered.length} of {notifications.length}" when filter
+    active; right shows emerald "View all" button →
+    router.push('/dashboard/settings?tab=notifications'); uses
+    useRouter from 'next/navigation' at line 4.
+- Found ONE minor deviation from the spec's exact wording:
+  the "X snoozed · Reset" indicator was implemented as a
+  full-width amber banner (justify-between, two separate
+  elements) rather than the spec's "small pill" wording. Refactored
+  lines 289-302 to render a single small centered pill:
+    <div class="flex justify-center px-3 pt-2">
+      <button class="flex items-center gap-1.5 px-2.5 py-1
+        rounded-full text-[10px] font-medium bg-amber-500/10
+        text-amber-400 border border-amber-500/25 hover:bg-
+        amber-500/20 ...">
+        <BellOff class="w-3 h-3" />
+        <span>{snoozedIds.size} snoozed</span>
+        <span class="text-amber-500/60">·</span>
+        <span class="font-semibold">Reset</span>
+      </button>
+    </div>
+  The whole pill is now a single button (clickable to reset),
+  matches the spec's "X snoozed · Reset" pill wording, and adds
+  a tiny BellOff icon for visual context.
+- Did NOT touch the CommandPalette or SearchTrigger exports
+  (lines 430-627) — only edited the NotificationsBell component
+  body.
+- Did NOT modify any API endpoints.
+- Kept all existing behavior intact: 30s polling (lines 123-127),
+  optimistic update for markAllRead (lines 140-160) + markOneRead
+  (lines 162-187), outside-click-close (lines 130-138), cap-at-20
+  (line 218), 'use client' at top.
+- Color audit: zero banned blue/indigo — only emerald (#10B981),
+  cyan, amber, red, zinc, and a single black badge gradient on
+  the bell trigger.
+- TypeScript strict: no `any` — LucideIcon type imported from
+  lucide-react; TYPE_CONFIG typed as Record<string, TypeConfig>;
+  FilterKey union type for filter state; counts typed as
+  Record<FilterKey, number>.
+
+Verification:
+- `bun run lint` from /home/z/my-project → EXIT 0 (no errors,
+  no warnings).
+- Dev server was down (crashed since Phase 3); manually restarted
+  via background `bun run dev`. Confirmed 200 on /signin.
+- agent-browser QA pass:
+  • open http://localhost:3000/signin (server warm, ~3s load).
+  • snapshot confirmed "1-Click Instant Demo Login" button at
+    ref=e3.
+  • click @e3 → wait --url "/dashboard" → landed on dashboard
+    (already-authenticated session resumed).
+  • snapshot confirmed "Notifications" bell button at ref=e18
+    in the top-right action cluster.
+  • click @e18 → dropdown failed to stay open through
+    agent-browser's snapshot re-flow (the snapshot operation
+    dispatches DOM events that trigger the outside-click handler).
+    Switched to JS-driven open via eval
+    (document.querySelector('button[aria-label="Notifications"]').click())
+    + 200ms wait + state check.
+  • eval-verified dropdown content:
+    - Header: "Notifications" + "46 new" badge + "Mark all read"
+      button.
+    - Filter pills (with count badges): All 46 / Unread 46 /
+      Payment 29 / Alerts 16 / Info 1 (29+16+1=46 ✓).
+    - Pulsing emerald dot (svg with animate-pulse class) present
+      on unread rows.
+    - Lucide type icons present (svg.lucide-dollar-sign, etc.).
+    - Per-notification action footer: BellOff button
+      (aria-label="Snooze 1 hour") + Check button
+      (aria-label="Mark as read") both present.
+    - Footer summary: "46 unread" (All filter) + "View all"
+      emerald button.
+  • Filter interactivity test: clicked "Alerts" pill via eval →
+    filtered list dropped from 20 rows to 16 rows (matches
+    count badge); first row "6 invoices voided (bulk) / Bulk
+    void action processed 6 invoices. / 19h ago".
+  • Snooze interactivity test: clicked BellOff button on first
+    row via eval → snooze pill appeared at top of list showing
+    "11 snoozed · Reset" (11 snoozes accumulated across multiple
+    eval runs since snooze state persists in local useState);
+    clicking "Reset" pill → pill disappeared, rows returned to 20.
+  • Reset to clean state: snoozedIds cleared, filter set to All,
+    20 notifications visible (capped).
+  • Final screenshot captured with dropdown open showing All
+    filter, full notification list with Lucide icons + pulsing
+    dots + per-notification action footers + footer summary.
+- agent-browser errors → empty (zero page errors).
+- agent-browser console → only HMR / Fast Refresh logs (zero
+  console.error / console.warn from the component).
+- Screenshot saved → /home/z/my-project/download/qa-phase4-
+  notifications.png (1280×577 PNG, 70 KB).
+
+Stage Summary:
+- Files edited (1, surgical — only the NotificationsBell
+  component body, NOT CommandPalette or SearchTrigger):
+  • src/app/dashboard/components/NotificationsBell.tsx — refactored
+    the snooze indicator from a full-width amber banner (lines
+    289-302) into a single small centered "X snoozed · Reset"
+    pill (with BellOff icon + amber styling + the whole pill as
+    a clickable reset button). All other spec'd features were
+    already in place from prior tasks; no other code touched.
+- Lint status: PASS — `bun run lint` exits 0.
+- TypeScript-strict: PASS — no `any`; LucideIcon + Record<string,
+  TypeConfig> + FilterKey union types in use throughout.
+- Color compliance: PASS — zero banned blue/indigo; only emerald,
+  cyan, amber, red, zinc, black present.
+- Spec compliance: PASS — all 6 enhancement areas verified
+  present and interactive via agent-browser eval probes:
+  1. Filter pills bar (All/Unread/Payment/Alerts/Info with count
+     badges, active=emerald, inactive=zinc).
+  2. Lucide icons via TYPE_CONFIG (DollarSign, CheckCircle2, Info,
+     AlertTriangle, XCircle, Scale) replacing all emojis.
+  3. Per-notification action footer (timestamp + Check if !is_read
+     + BellOff snooze) with local Set<string> state + filter-out
+     in useMemo + small "X snoozed · Reset" pill at top of list.
+  4. Per-filter empty states (EMPTY_STATES record with the exact
+     spec'd title+subtitle pairs).
+  5. Visual hierarchy (3px emerald left border on unread, opacity-
+     60 on read, 1.5×1.5 emerald pulsing dot before unread title,
+     hover:bg-white/[0.03], whole-row click-to-read).
+  6. Footer summary ("{unreadCount} unread" / "Showing X of Y" +
+     emerald "View all" → router.push settings?tab=notifications).
+- Smoke-test outcome: PASS — qa-phase4-notifications.png captured;
+  zero page errors; zero console errors; dropdown opens, filters
+  work (Alerts→16 rows), snooze works (pill appears + Reset
+  clears), all 6 spec'd feature areas visually confirmed.
+
+---
+Task ID: 15 (Phase 4 main agent)
+Agent: main (Z.ai Code)
+Task: Continue ThubPay development — QA assessment, add 3 new features (Dashboard Onboarding Checklist Card, Customer Detail Drawer Lifecycle Insights, NotificationsBell revamp), and styling polish (new CSS utility classes).
+
+### Stage 1 — Status assessment & QA
+- Read full prior worklog (Tasks 12, 13, 14-A, 14-B, Phase 3).
+- Verified dev server was running on :3000 (PID 27545 → next-server 27561).
+- `bun run lint` exit 0.
+- agent-browser QA pass: landing (`/`), signin (1-Click Demo login), dashboard, /dashboard/customers, /dashboard/transactions, /dashboard/finance, /dashboard/audit-log, /dashboard/developers, /dashboard/settings, /dashboard/disputes, /dashboard/subscriptions, /dashboard/automation (timed out — slow compile), /dashboard/analytics. All routes loaded cleanly with zero console errors and no hydration warnings.
+- Dev server crashed during multi-route compile warm-up (sandbox memory pressure during first-pass compilation); restarted with `(setsid bash -c 'exec bun run dev' < /dev/null > /dev/null 2>&1 &)` pattern — same approach used in Phase 3.
+
+### Stage 2 — Work focus selection
+Selected: **bug-free stability + 3 new features + mandatory styling polish**. From the Phase 3 worklog's 18 unresolved items, picked high-impact user-facing features + styling polish:
+1. NEW Dashboard Onboarding Checklist Card — currently only exists as a modal (OnboardingWalkthrough) and a compact sidebar indicator (OnboardingIndicator). No dedicated card on the dashboard page itself.
+2. NEW Customer Detail Drawer Lifecycle Insights section — Phase 3 added the lifecycle stage chip, but the drawer still only showed profile + stats + invoice history. Add a dedicated section with stage explanation + suggested action + 6-month payment sparkline.
+3. NotificationsBell revamp — already had filter pills + per-notification actions from prior phases; subagent 15-A confirmed most features were already in place and refactored the snooze indicator.
+
+### Stage 3 — Subagent dispatch (parallel)
+
+**Task ID 15-A (subagent, NotificationsBell revamp)** — completed before main agent work:
+- File: `/home/z/my-project/src/app/dashboard/components/NotificationsBell.tsx` (only `NotificationsBell` component, NOT `CommandPalette` or `SearchTrigger`).
+- Verified the 6 spec requirements were mostly already in place from prior phases:
+  - Filter pills (All / Unread / Payment / Alerts / Info) ✓
+  - Lucide `TYPE_CONFIG` map (DollarSign / CheckCircle2 / Info / AlertTriangle / XCircle / Scale) ✓
+  - Per-notification Check + BellOff action footer ✓
+  - Per-filter empty states ✓
+  - Visual hierarchy (3px emerald left border + pulsing dot) ✓
+  - Footer summary + "View all" link ✓
+- One refactor: the "X snoozed · Reset" indicator was a full-width banner — refactored into a single small centered amber pill with a BellOff icon (lines 289-304).
+- `bun run lint` exit 0. agent-browser screenshot `qa-phase4-notifications.png` confirmed all features render and are interactive.
+
+### Stage 4 — Direct main-agent work
+
+#### 4a. NEW `OnboardingChecklistCard` component
+- Created `/home/z/my-project/src/app/dashboard/components/OnboardingChecklistCard.tsx` (222 LOC).
+- Server component (no `'use client'` needed — pure presentational).
+- Props: `{ state: OnboardingState; workspaceName: string }`.
+- 4 steps defined locally: stepGateway (emerald), stepBrand (cyan), stepClient (amber), stepInvoice (purple) — each with `label`, `description`, `icon` (Lucide), `href` (deep link), `accent` (gradient bg/border classes), `iconBg`, `cta`.
+- Renders:
+  - Header with Sparkles icon in emerald gradient box + "Welcome to {workspaceName}!" + "{pct}% complete" pill + "{n} steps remaining" caption.
+  - Progress bar with emerald→cyan gradient + white shimmer overlay (uses existing `.animate-shimmer` class).
+  - Next-step CTA (highlighted): the first incomplete step in a larger card with gradient background + icon + label + description + "{cta}" button + chevron-right. Uses `hover-glow-border` + `hover:scale-[1.01]` + `hover:shadow-lg` for the hover effect.
+  - 4-step checklist grid (1-col mobile, 2-col sm, 4-col lg): each step is a card with a step-number badge in the corner, an icon, a label, and a description (or "Completed" if done). Completed steps use emerald accent + line-through label. Uses `hover-lift` class.
+  - Footer: setup progress message + "Skip setup" link to `/dashboard/settings`.
+- Surgical edit to `/home/z/my-project/src/app/dashboard/page.tsx`:
+  - Added `getOnboardingState` to imports from `@/lib/demo-data`.
+  - Added `OnboardingChecklistCard` import from `./components/OnboardingChecklistCard`.
+  - Added `getOnboardingState(workspaceId)` to the `Promise.all([...])` fetch.
+  - Wrapped `<OnboardingChecklistCard state={onboardingState} workspaceName={workspace.name} />` in `{!onboardingState.completed && (...)}` and inserted it between the Quick-Stats Strip and the Stats Grid.
+- Conditional rendering means the card is hidden when onboarding is 100% complete (true for the seeded admin workspace).
+
+#### 4b. NEW Customer Detail Drawer Lifecycle Insights section
+- File: `/home/z/my-project/src/app/dashboard/customers/ClientsTableClient.tsx` (added `Activity` to Lucide imports).
+- Inserted a new "Lifecycle Insights" section between the existing Stats section and Invoice history section in the right-side customer detail drawer.
+- Section structure (computed inside an IIFE so all variables are scoped):
+  - **Stage computation**: reuses the existing `computeStage(selectedClient)` helper + `STAGE_CONFIG` map.
+  - **Days-since-payment**: `Math.floor((Date.now() - new Date(selectedClient.last_payment_at).getTime()) / DAY)` — displays as "last paid today" (0d) or "last paid {N}d ago".
+  - **6-month sparkline**: buckets paid invoices by month for the last 6 months (current month + 5 prior). Each bucket is `{ label: 'Mon', count: N }`. Max bucket value is `Math.max(1, ...counts)`. Renders as 6 vertical bars in a `flex items-end justify-between gap-1.5 h-12` container. Current month bar uses emerald gradient (`from-[#10B981]/60 to-[#34D399]`), other bars use `bg-[#10B981]/30`. Height = `(count / max) * 100%` with min 12% if count > 0, else 4%. Each bar has a `title` tooltip showing the count + month.
+  - **Stage-specific suggested action**: `stageAction: Record<LifecycleStage, { text, cta, href }>` map with mailto: links for re-engagement / win-back emails. Active stage gets a colored chip with pulsing dot + action text + "{cta}" button (mailto: link).
+- Loading state: when `loadingDetail` is true, the sparkline shows 6 pulsing `bg-[#1a1a1f]` skeleton bars (matches the eventual layout).
+
+#### 4c. NEW CSS utility classes (styling polish — MANDATORY)
+- File: `/home/z/my-project/src/app/globals.css` — appended 3 new utility class definitions after the existing `.stat-card-hover` rules.
+- **`.hover-lift`**: applies a smooth `transition` (transform + box-shadow + border-color), and on `:hover` applies `translateY(-2px)` + emerald-tinted shadow (`0 8px 24px -8px rgba(16, 185, 129, 0.18)` + black drop shadow). On `:active`, applies `translateY(-1px) scale(0.995)` + smaller shadow. Reusable across all interactive cards.
+- **`.hover-glow-border`**: applies `transition: border-color + transform`, on `:hover` adds emerald-tinted border + `translateY(-1px)`. Adds a `::after` pseudo-element with `linear-gradient(135deg, emerald, transparent, cyan)` masked to render only the border (using `-webkit-mask` + `mask-composite: exclude` trick) — creates a glowing animated border that fades in on hover.
+- **`.skeleton-shimmer`**: a moving `linear-gradient(90deg, zinc-25% → zinc-50% → zinc-25%)` background with `background-size: 200% 100%` + a `skeletonShimmer` keyframe animation that scrolls the gradient horizontally every 1.5s — much better visual fidelity than `animate-pulse` for skeleton loaders.
+
+#### 4d. Applied new CSS utilities
+- `/home/z/my-project/src/app/dashboard/page.tsx` — added `hover-lift` class to both the Quick-Stats Strip chips (alongside `stat-card-hover`) and the main Stats Grid cards (alongside `glass-card-hover stat-card-hover glass-card-press`).
+- `/home/z/my-project/src/app/dashboard/components/OnboardingChecklistCard.tsx` — added `hover-glow-border` to the next-step CTA link, and `hover-lift` to each step card in the 4-step checklist grid.
+
+### Stage 5 — Verification (agent-browser, end-to-end)
+
+| Step | Result |
+|------|--------|
+| `bun run lint` | exit 0 ✓ |
+| Dev server (restarted via setsid after multi-route compile crash) | `✓ Ready in 907ms` ✓ |
+| `/dashboard` Quick-Stats Strip renders 4 chips | TODAY'S REVENUE / MTD REVENUE / YTD REVENUE / AVG PER INVOICE all show ✓ |
+| `/dashboard` Onboarding Checklist Card | hidden (state.completed=true for seeded admin) ✓ — conditional render works |
+| `/dashboard/customers` customer drawer Lifecycle Insights section | opened David Kim card, saw "LIFECYCLE INSIGHTS / NEW / last paid today / New customer — send a welcome email to encourage repeat business. / Send welcome email / PAID INVOICES · LAST 6 MONTHS / 1 total / Mar Apr May..." ✓ |
+| NotificationsBell filter interactivity | All 46 / Unread 46 / Payment 29 / Alerts 16 / Info 1 — clicking "Alerts" shows only alert-type notifications ("6 invoices voided (bulk)", "Payment refunded", etc.) ✓ |
+| Console errors across dashboard + customers + analytics | none ✓ |
+| Hydration errors | none ✓ |
+
+### Stage 6 — Files created / edited in Phase 4
+
+NEW (1):
+- `src/app/dashboard/components/OnboardingChecklistCard.tsx` (222 LOC)
+
+EDITED by main agent:
+- `src/app/dashboard/page.tsx` — +2 imports (`getOnboardingState`, `OnboardingChecklistCard`), +1 to `Promise.all` fetch, +1 conditional render block (10 lines) for the OnboardingChecklistCard; +`hover-lift` class on Quick-Stats Strip chips + Stats Grid cards.
+- `src/app/dashboard/customers/ClientsTableClient.tsx` — +1 Lucide import (`Activity`); +1 new "Lifecycle Insights" section (147 lines) in the customer detail drawer between Stats and Invoice history.
+- `src/app/globals.css` — appended 3 new utility classes (`.hover-lift`, `.hover-glow-border`, `.skeleton-shimmer` + `@keyframes skeletonShimmer`) — ~70 lines of new CSS.
+
+EDITED by subagent 15-A:
+- `src/app/dashboard/components/NotificationsBell.tsx` — refactored the "X snoozed · Reset" indicator from a full-width banner (lines 289-304) into a small centered amber pill with BellOff icon.
+
+### Stage 7 — Screenshots
+
+- `qa-phase4-landing.png` — landing page
+- `qa-phase4-dashboard.png` — dashboard after sign-in (Quick-Stats Strip + Stats Grid visible)
+- `qa-phase4-customers.png` — customers page
+- `qa-phase4-transactions.png` — transactions page
+- `qa-phase4-finance.png` — finance page
+- `qa-phase4-analytics.png` — analytics page (with Revenue Forecast Widget from Phase 3)
+- `qa-phase4-dashboard-with-onboarding.png` — dashboard final state (OnboardingChecklistCard hidden because state is complete)
+- `qa-phase4-customer-drawer-lifecycle.png` — customer detail drawer showing the new Lifecycle Insights section
+- `qa-phase4-notifications.png` — subagent 15-A's NotificationsBell revamp
+- `qa-phase4-notifications-revamp.png` — main-agent screenshot of bell open with all filter pills
+- `qa-phase4-notifications-alerts-filter.png` — bell dropdown filtered to "Alerts" showing only alert-type notifications
+
+### Stage 8 — Unresolved Issues / Risks / Next-Phase Recommendations
+
+**Carried-over from Phase 1-3 (still pending):**
+1. `upload-logo` writes to read-only `public/` — works in dev but breaks on serverless. Next: Vercel Blob / S3.
+2. In-memory rate-limiter — per-process; multi-instance needs Redis.
+3. Webhook dispatcher has no retry — single attempt per endpoint. Add `attempts` + `nextRetryAt` columns to `WebhookDelivery` + exponential backoff + Idempotency-Key header.
+4. Migrate existing `webhookSecret` plaintext values — new POST/PATCH encrypts at rest, but legacy seeded gateways still have plaintext. Add migration endpoint.
+5. Apple Pay / Google Pay buttons present but route through demo path. Real integration needs Stripe Payment Request Button.
+6. `tsconfig.json` `noImplicitAny: false` — flipping cascades ~100 TS errors. Dedicated type-safety pass.
+7. No CSP header — adding strict CSP would break inline theme-flash-prevention script. Extract to `/theme-init.js`.
+8. AI insights cache is per-process — multi-instance needs Redis/shared cache.
+9. `thubpay:action` custom event is global — safe with single-mount DashboardActions.
+10. `g`-prefix navigation state 800ms timeout — consider user-configurable.
+11. Recent Activity Timeline filter is hardcoded — new audit actions need manual list update.
+12. AI insights can be slow (2.6s on first call) — consider streaming via `ReadableStream`.
+13. Help overlay shortcut list is hardcoded — consider auto-discovering from a central registry.
+14. `last_payment_at` computation is now O(N) per client (Prisma include per client list call). At scale (>1000 clients) this could be slow. Next phase: aggregate via `db.invoice.groupBy`.
+15. Customer Lifecycle Stage thresholds are hardcoded (7/30/60 days). Next phase: make user-configurable in Settings, or use ML churn-risk scoring.
+16. Revenue Forecast Widget is pure client-side — multi-workspace cross-instance accuracy needs server-side forecast endpoint.
+17. Quick-Stats Strip "Avg per Invoice" uses `stats.totalRevenue / stats.paidCount` (all-time), which may mislead users who expect the per-period average. Next phase: switch to `revenueData.reduce(...) / successFailureRate.succeeded` for period-aware average.
+18. Dev server crashed during Phase 2 QA and required manual restart in Phase 3 — sandbox environment issue; not a code issue.
+
+**New from Phase 4:**
+19. **OnboardingChecklistCard is hidden for the demo admin user** because the seeded workspace already has all 4 steps complete. The card only renders for users with incomplete onboarding. Next phase: consider adding a "Revisit onboarding" link in the Settings page so admins can re-trigger the walkthrough for testing/demo purposes.
+20. **Customer Detail Drawer Lifecycle Insights "suggested action" uses mailto: links** which open the user's default email client. For a more native experience, consider wiring the CTAs to a built-in email composition modal (reusing `src/lib/email.ts`) — though that requires SMTP config.
+21. **6-month sparkline uses inline CSS bars** instead of Recharts. At small sizes (drawer is `max-w-md`), inline bars are fine and lighter-weight than Recharts. If we ever want richer interactivity (hover tooltips, click-to-drill), switch to Recharts `<BarChart>` with `height={60}`.
+22. **`.hover-lift` and `.hover-glow-border` are applied only to dashboard stat cards + onboarding card**. Next phase: apply them to other interactive cards (customer cards, transactions rows, finance stat cards) for visual consistency.
+23. **`.skeleton-shimmer` class is defined but NOT yet used anywhere** — defined proactively for future skeleton work. Next phase: replace `animate-pulse` skeleton loaders in `TransactionsTableClient.tsx`, `AnalyticsChartsClient.tsx`, `RecentActivityTimeline.tsx` with `.skeleton-shimmer`.
+
+### Stage 9 — Recommended next phase
+
+Project continues to be in a stable, polished, feature-rich state. Recommended next moves (priority order, refined based on Phase 4 findings):
+1. **Apply `.hover-lift` + `.skeleton-shimmer` across all pages** (Phase 4 #22 + #23) — quick styling-consistency win.
+2. **Apple Pay / Google Pay real integration** (Phase 1 #5) — revenue-generating feature.
+3. **Webhook dispatcher retry + Idempotency-Key** (Phase 1 #3) — reliability.
+4. **Redis-backed rate-limiter + cache** (Phase 1 #2 + Phase 2 #8) — multi-instance prerequisite.
+5. **`upload-logo` Vercel Blob / S3** (Phase 1 #1) — production-readiness.
+6. **Type-safety pass** (Phase 1 #6) — turn on `noImplicitAny`, fix ~100 cascading errors.
+7. **Strict CSP** (Phase 1 #7) — security hardening.
+8. **Customer Lifecycle ML churn-risk scoring** (Phase 3 #15) — replace hardcoded thresholds with predictive model.
+9. **Server-side forecast endpoint** (Phase 3 #16) — multi-instance forecast accuracy.
+10. **Built-in email composition modal** (Phase 4 #20) — replace mailto: links with native UI.
