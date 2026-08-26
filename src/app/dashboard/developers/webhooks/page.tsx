@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { requireWorkspace } from '@/lib/dashboard-auth';
 import { db } from '@/lib/db';
+import FailedDeliveriesCard from './FailedDeliveriesCard';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,6 +57,20 @@ export default async function WebhooksPage() {
       orderBy: { createdAt: 'asc' },
     }),
   ]);
+
+  // Phase 6: fetch failed deliveries with retry info
+  const failedDeliveries = await db.webhookDelivery.findMany({
+    where: {
+      workspaceId,
+      status: 'failed',
+    },
+    include: {
+      webhookEvent: { select: { eventType: true, gateway: true } },
+      webhookEndpoint: { select: { label: true, url: true } },
+    },
+    orderBy: { attemptedAt: 'desc' },
+    take: 25,
+  });
 
   const stats = {
     total: events.length,
@@ -237,6 +252,9 @@ export default async function WebhooksPage() {
             </div>
           )}
         </div>
+
+        {/* Phase 6: Failed Deliveries & Retries */}
+        <FailedDeliveriesCard failedDeliveries={failedDeliveries} />
       </div>
     </section>
   );

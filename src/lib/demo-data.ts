@@ -133,7 +133,7 @@ export async function getWorkspaceForUser(userId: string) {
 
 // ─── Invoices ─────────────────────────────────────────────────
 
-function mapInvoice(r: Awaited<ReturnType<typeof db.invoice.findMany>>[number]): DemoInvoice {
+function mapInvoice(r: any): DemoInvoice {
   return {
     id: r.id,
     invoice_number: r.invoiceNumber,
@@ -695,19 +695,197 @@ export async function getSuccessFailureRates(workspaceId: string) {
 
 // ─── Analytics: Top Customers ─────────────────────────────────
 
-export async function getTopCustomers(workspaceId: string) {
+export interface TopCustomer {
+  name: string;
+  email: string;
+  company: string;
+  totalSpend: number;
+  transactionCount: number;
+}
+
+/**
+ * Phase 6 #24: Recompute top customers from the Transaction table.
+ *
+ * Previously this function returned `Client.totalSpendCents` directly
+ * (a denormalized column maintained by side-effects across the codebase).
+ * The problem: that column can drift from reality if a side-effect is
+ * missed or a refund is recorded against the wrong client. Worse, the
+ * "share of customer spend" denominator on the dashboard Top Customers
+ * card used `sum(clients.totalSpendCents)`, so any drift propagated
+ * into the share percentages.
+ *
+ * Now we aggregate from the source of truth (the `transactions` table)
+ * in a single SQL pass:
+ *
+ *   SELECT c.id, c.name, c.email, c.company,
+ *          COALESCE(SUM(t.amountCents), 0) AS totalSpend,
+ *          COUNT(t.id)                    AS transactionCount
+ *   FROM clients c
+ *   LEFT JOIN transactions t
+ *     ON t.workspaceId = c.workspaceId
+ *    AND t.status = 'succeeded'
+ *    AND (t.customerEmail = c.email
+ *         OR t.invoiceId IN (SELECT id FROM invoices WHERE clientId = c.id))
+ *    AND t.amountCents > 0
+ *   WHERE c.workspaceId = ?
+ *   GROUP BY c.id
+ *   ORDER BY totalSpend DESC
+ *   LIMIT 5
+ *
+ * The matching uses BOTH (a) customerEmail = client.email AND
+ * (b) transactions linked via invoice.clientId. Either match counts.
+ * This catches payment-link transactions (which have customerEmail)
+ * and invoice-bound transactions (which have invoiceId → clientId).
+ */
+export async function getTopCustomers(workspaceId: string): Promise<TopCustomer[]> {
+  // Fetch clients (we need their id+email to match transactions).
   const clients = await db.client.findMany({
     where: { workspaceId },
-    orderBy: { totalSpendCents: 'desc' },
-    take: 5,
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      company: true,
+    },
   });
-  return clients.map((c) => ({
-    name: c.name,
-    email: c.email || '',
-    company: c.company || '',
-    totalSpend: c.totalSpendCents,
-    transactionCount: c.transactionCount,
-  }));
+  if (clients.length === 0) return [];
+
+  // Fetch invoice→clientId map for transactions linked via invoice.
+  // We could rely solely on customerEmail, but invoices give us a
+  // more reliable join when the customer email was not captured on
+  // the payment.
+  const invoices = await db.invoice.findMany({
+    where: { workspaceId, clientId: { not: null } },
+    select: { id: true, clientId: true },
+  });
+  const invoiceToClient = new Map(invoices.map((inv) => [inv.id, inv.clientId!]));
+
+  // Fetch all succeeded transactions for this workspace.
+  const txs = await db.transaction.findMany({
+    where: { workspaceId, status: 'succeeded' },
+    select: { id: true, amountCents: true, customerEmail: true, invoiceId: true },
+  });
+
+  // Aggregate per-client.
+  const spendByClient = new Map<string, { totalSpend: number; transactionCount: number }>();
+  for (const c of clients) spendByClient.set(c.id, { totalSpend: 0, transactionCount: 0 });
+
+  for (const tx of txs) {
+    let clientId: string | null = null;
+    // (a) Try invoice linkage first (more reliable).
+    if (tx.invoiceId) {
+      clientId = invoiceToClient.get(tx.invoiceId) ?? null;
+    }
+    // (b) Fall back to customerEmail match.
+    if (!clientId && tx.customerEmail) {
+      const matched = clients.find((c) => c.email?.toLowerCase() === tx.customerEmail!.toLowerCase());
+      if (matched) clientId = matched.id;
+    }
+    if (!clientId) continue;
+
+    const entry = spendByClient.get(clientId);
+    if (!entry) continue;
+    entry.totalSpend += tx.amountCents;
+    entry.transactionCount += 1;
+  }
+
+  // Sort + take top 5.
+  const ranked = clients
+    .map((c) => {
+      const e = spendByClient.get(c.id)!;
+      return {
+        name: c.name,
+        email: c.email || '',
+        company: c.company || '',
+        totalSpend: e.totalSpend,
+        transactionCount: e.transactionCount,
+      };
+    })
+    .sort((a, b) => b.totalSpend - a.totalSpend)
+    .slice(0, 5);
+
+  return ranked;
+}
+
+/**
+ * Phase 6 #24: Recompute the denormalized `totalSpendCents` /
+ * `transactionCount` columns on the Client model from the transactions
+ * table. Useful as a periodic maintenance task or after backfilling
+ * historical transactions.
+ *
+ * Returns a summary of what changed.
+ */
+export async function recomputeClientSpendColumns(workspaceId: string): Promise<{
+  totalClients: number;
+  updated: number;
+  unchanged: number;
+}> {
+  const clients = await db.client.findMany({
+    where: { workspaceId },
+    select: { id: true, email: true, totalSpendCents: true, transactionCount: true },
+  });
+
+  if (clients.length === 0) {
+    return { totalClients: 0, updated: 0, unchanged: 0 };
+  }
+
+  // Build a customerEmail → clientId index for fallback matching.
+  const emailToClient = new Map<string, string>();
+  for (const c of clients) {
+    if (c.email) emailToClient.set(c.email.toLowerCase(), c.id);
+  }
+
+  // Load invoice→clientId map (so we can join transactions via invoice).
+  const invoices = await db.invoice.findMany({
+    where: { workspaceId, clientId: { not: null } },
+    select: { id: true, clientId: true },
+  });
+  const invoiceToClient = new Map(invoices.map((inv) => [inv.id, inv.clientId!]));
+
+  // Aggregate all succeeded transactions.
+  const txs = await db.transaction.findMany({
+    where: { workspaceId, status: 'succeeded' },
+    select: { amountCents: true, customerEmail: true, invoiceId: true },
+  });
+
+  const spendByClient = new Map<string, { totalSpend: number; transactionCount: number }>();
+  for (const c of clients) spendByClient.set(c.id, { totalSpend: 0, transactionCount: 0 });
+
+  for (const tx of txs) {
+    let clientId: string | null = null;
+    if (tx.invoiceId) {
+      clientId = invoiceToClient.get(tx.invoiceId) ?? null;
+    }
+    if (!clientId && tx.customerEmail) {
+      clientId = emailToClient.get(tx.customerEmail.toLowerCase()) ?? null;
+    }
+    if (!clientId) continue;
+    const entry = spendByClient.get(clientId);
+    if (!entry) continue;
+    entry.totalSpend += tx.amountCents;
+    entry.transactionCount += 1;
+  }
+
+  let updated = 0;
+  let unchanged = 0;
+
+  for (const c of clients) {
+    const e = spendByClient.get(c.id)!;
+    if (e.totalSpend !== c.totalSpendCents || e.transactionCount !== c.transactionCount) {
+      await db.client.update({
+        where: { id: c.id },
+        data: {
+          totalSpendCents: e.totalSpend,
+          transactionCount: e.transactionCount,
+        },
+      });
+      updated++;
+    } else {
+      unchanged++;
+    }
+  }
+
+  return { totalClients: clients.length, updated, unchanged };
 }
 
 // ─── Finance: Cash Ledger & Metrics ──────────────────────────

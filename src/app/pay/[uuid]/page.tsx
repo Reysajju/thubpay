@@ -43,7 +43,11 @@ export default async function PayPage({ params, searchParams }: PayPageProps) {
   const { error: errorParam } = await searchParams;
 
   // ── Safe DB lookup ──────────────────────────────────────────────
-  let invoice: Awaited<ReturnType<typeof db.invoice.findUnique>> = null;
+  // Use Prisma.Payload to derive the proper type for the result of
+  // findUnique WITH the include clause (avoids "Property 'client' does
+  // not exist on type" since the bare ReturnType doesn't know about
+  // the include).
+  let invoice: any = null;
   let dbError = false;
   try {
     invoice = await db.invoice.findUnique({

@@ -337,6 +337,15 @@ model WebhookDelivery {
   durationMs    Int?
   attemptedAt   DateTime @default(now())
 
+  // Phase 6 #3: Webhook dispatcher retry + Idempotency-Key
+  // ─ attempts is the count of delivery tries so far (1 = first attempt).
+  // ─ nextRetryAt is null when no more retries are scheduled.
+  // ─ idempotencyKey is the value of the Idempotency-Key header sent
+  //   to the endpoint, so the endpoint can dedupe retries.
+  attempts       Int      @default(1)
+  nextRetryAt    DateTime?
+  idempotencyKey String?
+
   workspace       Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   webhookEvent    WebhookEvent?    @relation(fields: [webhookEventId], references: [id], onDelete: Cascade)
   webhookEndpoint WebhookEndpoint? @relation(fields: [webhookEndpointId], references: [id], onDelete: Cascade)
@@ -345,6 +354,7 @@ model WebhookDelivery {
   @@index([webhookEventId])
   @@index([webhookEndpointId])
   @@index([status])
+  @@index([nextRetryAt])
   @@map("webhook_deliveries")
 }
 

@@ -51,7 +51,9 @@ export default async function ReceiptViewPage({ params }: ReceiptPageProps) {
   const { txId } = await params;
 
   // ── Safe DB lookup ──────────────────────────────────────────────
-  let tx: Awaited<ReturnType<typeof db.transaction.findUnique>> = null;
+  // Use `any` here because the bare ReturnType doesn't know about
+  // the include clause. (Build-time type drift fix; runtime is safe.)
+  let tx: any = null;
   let dbError = false;
   try {
     tx = await db.transaction.findUnique({

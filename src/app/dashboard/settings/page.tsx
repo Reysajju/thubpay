@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { requireWorkspace } from '@/lib/dashboard-auth';
-import { getGateways } from '@/lib/demo-data';
+import { getGateways, getOnboardingState, type OnboardingState } from '@/lib/demo-data';
 import SettingsClient from './SettingsClient';
 
 export const dynamic = 'force-dynamic';
@@ -13,7 +13,10 @@ export default async function SettingsPage() {
   }
   const { workspaceId, workspace } = ctx.context;
 
-  const gateways = await getGateways(workspaceId);
+  const [gateways, onboarding] = await Promise.all([
+    getGateways(workspaceId),
+    getOnboardingState(workspaceId).catch(() => null as OnboardingState | null),
+  ]);
 
   // Map demo gateways to the shape SettingsClient expects
   const mappedGateways = gateways.map(gw => ({
@@ -34,6 +37,7 @@ export default async function SettingsPage() {
         monthly_target_cents: workspace.monthlyTargetCents,
       }}
       gateways={mappedGateways}
+      initialOnboarding={onboarding}
     />
   );
 }

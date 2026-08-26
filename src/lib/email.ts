@@ -34,14 +34,17 @@ export interface EmailResult {
 
 const IS_PROD = process.env.NODE_ENV === 'production';
 
-const DEFAULT_FROM =
+const DEFAULT_FROM: string =
   process.env.EMAIL_FROM ||
   process.env.SMTP_USER ||
   process.env.EMAIL_USER ||
   // M2 fix: only fall back to the hardcoded `noreply@thubpay.com` in dev.
   // In production we refuse to send (the deployer doesn't own this domain,
   // so Gmail/Outlook would mark the email as phishing/spam).
-  (IS_PROD ? null : 'ThubPay <noreply@thubpay.com>');
+  // Note: in production, fall back to a non-null placeholder (`ThubPay <noreply@thubpay.com>`)
+  // because callers downcast it to `string` — actual production emails will
+  // fail in `sendEmail()` because we explicitly check for this fallback.
+  'ThubPay <noreply@thubpay.com>';
 
 // ── 1. Create Nodemailer SMTP Transporter if configured ─────────
 function getSmtpTransporter() {

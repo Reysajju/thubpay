@@ -124,7 +124,7 @@ export default function OnboardingChecklistCard({ state, workspaceName }: Props)
       {nextStep && (
         <Link
           href={nextStep.href}
-          className={`group block relative overflow-hidden rounded-2xl p-4 mb-4 border bg-gradient-to-br ${nextStep.accent} transition-all hover:scale-[1.01] hover:shadow-lg hover:shadow-emerald-500/10 hover-glow-border`}
+          className={`group block relative overflow-hidden rounded-2xl p-4 mb-4 border bg-gradient-to-br ${nextStep.accent} transition-all hover:scale-[1.01] hover:shadow-lg hover:shadow-emerald-500/10 hover-glow-border conic-border`}
         >
           <div className="flex items-center gap-3">
             <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${nextStep.iconBg}`}>

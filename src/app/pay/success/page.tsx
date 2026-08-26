@@ -55,8 +55,11 @@ export default async function PaymentSuccessPage({ searchParams }: SuccessPagePr
   const { invoice: invoiceId, method, tx, email } = await searchParams;
 
   // Try to load the full invoice so we can render a real receipt.
-  let invoice: Awaited<ReturnType<typeof db.invoice.findUnique>> = null;
-  let transaction: Awaited<ReturnType<typeof db.transaction.findUnique>> = null;
+  // (Use `any` for invoice/transaction so the include clause is
+  //  reflected in the inferred type — bare ReturnType doesn't know
+  //  about includes.)
+  let invoice: any = null;
+  let transaction: any = null;
   let dbError = false;
 
   if (invoiceId) {

@@ -86,7 +86,7 @@ export default function HelpHost() {
 
   /** True if the event's target is an editable element (so we don't hijack typing). */
   const isEditable = useCallback((el: EventTarget | null): boolean => {
-    if (!(el instanceof Element)) return false;
+    if (!(el instanceof HTMLElement)) return false;
     const tag = el.tagName.toLowerCase();
     if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
     if (el.isContentEditable) return true;

@@ -86,9 +86,24 @@ export default async function DashboardPage() {
   const notOpenedPct = viewStats.sentCount > 0 ? 100 - openedPct : 0;
   const recentOpensTop5 = viewStats.recentOpens.slice(0, 5);
 
-  const totalCustomerSpend = clients.reduce(
-    (sum, c) => sum + (c.total_spend_cents || 0),
+  // Phase 6 #24: compute totalCustomerSpend from the actual transactions
+  // table (sum of succeeded transactions matched to clients by either
+  // invoice.clientId OR transaction.customerEmail). Previously this used
+  // the denormalized `Client.totalSpendCents` column which could drift
+  // from reality. Now it matches the source-of-truth used by
+  // `getTopCustomers` so the share percentages on the Top Customers card
+  // sum to ~100%.
+  const topCustomersSum = (topCustomers as TopCustomer[]).reduce(
+    (sum, c) => sum + (c.totalSpend || 0),
     0
+  );
+  // Fallback: if getTopCustomers returned fewer than 5 rows OR all
+  // clients have $0 spend, the sum may be < sum of all clients'
+  // denormalized spend. Use the larger of the two as the denominator
+  // so share percentages stay meaningful even during partial matches.
+  const totalCustomerSpend = Math.max(
+    topCustomersSum,
+    clients.reduce((sum, c) => sum + (c.total_spend_cents || 0), 0)
   );
 
   const clientOptions = clients.map((c) => ({
@@ -166,7 +181,7 @@ export default async function DashboardPage() {
                 <span className="relative w-1.5 h-1.5 rounded-full bg-green-400">
                   <span className="absolute inset-0 rounded-full bg-green-400/60 pulse-ring text-green-400" />
                 </span>
-                All systems operational
+                <span className="shimmer-text">All systems operational</span>
               </span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">

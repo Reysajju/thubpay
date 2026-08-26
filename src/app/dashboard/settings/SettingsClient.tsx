@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   setMonthlyTarget,
   addGatewayCredential,
@@ -52,9 +52,20 @@ interface Workspace {
   monthly_target_cents: number | null;
 }
 
+interface OnboardingStateLike {
+  stepGateway: boolean;
+  stepBrand: boolean;
+  stepClient: boolean;
+  stepInvoice: boolean;
+  walkthroughSkipped: boolean;
+  completionPct: number;
+  completed: boolean;
+}
+
 interface Props {
   workspace: Workspace;
   gateways: GatewayCredential[];
+  initialOnboarding?: OnboardingStateLike | null;
 }
 
 type Tab = 'general' | 'gateways' | 'billing' | 'notifications';
@@ -91,7 +102,7 @@ const PLAN_CONFIG: Record<string, { label: string; color: string; bg: string; bo
   enterprise: { label: 'Enterprise', color: 'text-cyan-400', bg: 'bg-cyan-500/10', border: 'border-cyan-500/25' },
 };
 
-export default function SettingsClient({ workspace, gateways: initialGateways }: Props) {
+export default function SettingsClient({ workspace, gateways: initialGateways, initialOnboarding }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('general');
 
   // ── Target state ──────────────────────────────────────────────
@@ -128,6 +139,38 @@ export default function SettingsClient({ workspace, gateways: initialGateways }:
   const [onboardingResetLoading, setOnboardingResetLoading] = useState(false);
   const [onboardingResetMessage, setOnboardingResetMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [pendingResetOnboarding, setPendingResetOnboarding] = useState(false);
+
+  // ── Live onboarding state (Phase 6: wire up to real API) ───────
+  // Seed from SSR-provided initialOnboarding (avoids loading flash).
+  // Re-fetch on tab switch to "general" so the values stay fresh after
+  // the user resets / replays onboarding and navigates back.
+  const [onboardingState, setOnboardingState] = useState<OnboardingStateLike | null>(initialOnboarding ?? null);
+  const [onboardingLoading, setOnboardingLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    // Skip fetch on first mount if we already have SSR data — the
+    // server just rendered this so it's fresh enough.
+    if (initialOnboarding && onboardingState && activeTab !== 'general') return;
+    if (activeTab !== 'general') return;
+    setOnboardingLoading(true);
+    fetch('/api/dashboard/onboarding', { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then((data: OnboardingStateLike) => {
+        if (!cancelled) setOnboardingState(data);
+      })
+      .catch(() => { /* swallow — keep SSR/last-known state */ })
+      .finally(() => { if (!cancelled) setOnboardingLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeTab]);
+
+  // Derived values for the status pills
+  const obState = onboardingState;
+  const obStepsDone = obState
+    ? [obState.stepGateway, obState.stepBrand, obState.stepClient, obState.stepInvoice].filter(Boolean).length
+    : 4;
+  const obPct = obState ? obState.completionPct : 100;
+  const obCompleted = obState ? obState.completed : true;
 
   // ── Handle onboarding reset ─────────────────────────────────────
   const handleResetOnboarding = async () => {
@@ -406,32 +449,58 @@ export default function SettingsClient({ workspace, gateways: initialGateways }:
                   <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
                     Status
                   </p>
-                  <p className="text-sm font-bold text-emerald-400 flex items-center gap-1.5">
-                    <span className="relative w-1.5 h-1.5 rounded-full bg-emerald-400">
-                      <span className="absolute inset-0 rounded-full bg-emerald-400/60 pulse-ring text-emerald-400" />
+                  <p className={`text-sm font-bold flex items-center gap-1.5 ${obCompleted ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    <span className="relative w-1.5 h-1.5 rounded-full bg-current">
+                      <span className={`absolute inset-0 rounded-full pulse-ring ${obCompleted ? 'text-emerald-400' : 'text-amber-400'}`} />
                     </span>
-                    Completed
+                    {onboardingLoading ? 'Refreshing…' : obCompleted ? 'Completed' : 'In progress'}
                   </p>
                 </div>
                 <div className="p-3 rounded-xl bg-[#0a0a0b] border border-[#252529]/50">
                   <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
                     Steps
                   </p>
-                  <p className="text-sm font-bold text-white">4 / 4</p>
+                  <p className="text-sm font-bold text-white">{obStepsDone} / 4</p>
                 </div>
                 <div className="p-3 rounded-xl bg-[#0a0a0b] border border-[#252529]/50">
                   <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
                     Progress
                   </p>
-                  <p className="text-sm font-bold text-cyan-400">100%</p>
+                  <p className={`text-sm font-bold ${obPct === 100 ? 'text-cyan-400' : obPct >= 50 ? 'text-emerald-400' : 'text-amber-400'}`}>{obPct}%</p>
                 </div>
               </div>
 
+              {/* Step-by-step breakdown — only show if onboarding not complete */}
+              {obState && !obCompleted && (
+                <div className="mb-5 p-3 rounded-xl bg-amber-500/5 border border-amber-500/15">
+                  <p className="text-[10px] font-bold text-amber-400/80 uppercase tracking-wider mb-2">
+                    Outstanding steps
+                  </p>
+                  <ul className="space-y-1.5 text-xs">
+                    <li className={`flex items-center gap-2 ${obState.stepGateway ? 'text-zinc-500 line-through' : 'text-zinc-200'}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${obState.stepGateway ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                      Connect a payment gateway
+                    </li>
+                    <li className={`flex items-center gap-2 ${obState.stepBrand ? 'text-zinc-500 line-through' : 'text-zinc-200'}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${obState.stepBrand ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                      Set up your brand / workspace name
+                    </li>
+                    <li className={`flex items-center gap-2 ${obState.stepClient ? 'text-zinc-500 line-through' : 'text-zinc-200'}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${obState.stepClient ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                      Add your first customer
+                    </li>
+                    <li className={`flex items-center gap-2 ${obState.stepInvoice ? 'text-zinc-500 line-through' : 'text-zinc-200'}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${obState.stepInvoice ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                      Create your first invoice
+                    </li>
+                  </ul>
+                </div>
+              )}
+
               <p className="text-xs text-zinc-400 mb-4 leading-relaxed">
-                Onboarding is complete for this workspace. Resetting will
-                re-enable the dashboard checklist card and replay the
-                walkthrough modal — useful for demos, training new team
-                members, or re-checking that all setup steps are still valid.
+                {obCompleted
+                  ? 'Onboarding is complete for this workspace. Resetting will re-enable the dashboard checklist card and replay the walkthrough modal — useful for demos, training new team members, or re-checking that all setup steps are still valid.'
+                  : `Onboarding is ${obPct}% complete. Resetting will replay the walkthrough modal and re-show the checklist card so you can pick up where you left off.`}
               </p>
 
               {onboardingResetMessage && (

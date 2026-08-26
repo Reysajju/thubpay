@@ -37,9 +37,10 @@ export interface WorkspaceContext {
  * proxied through Caddy on port 81 → next on port 3000). The Host header
  * is set by the proxy and reflects what the browser actually requested.
  */
-async function checkCsrfOrigin():
+async function checkCsrfOrigin(): Promise<
   | { ok: true }
-  | { ok: false; error: string; status: number } {
+  | { ok: false; error: string; status: number }
+> {
   // Browsers always send Origin on POST/PATCH/DELETE in modern browsers.
   // If it's absent (e.g. server-side fetch, GET request) we don't block.
   const h = await headers();

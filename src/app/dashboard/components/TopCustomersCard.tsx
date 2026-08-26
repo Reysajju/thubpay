@@ -149,7 +149,7 @@ export default function TopCustomersCard({ customers, totalCustomerSpend }: Prop
             return (
               <li
                 key={`${c.email}-${i}`}
-                className={`relative rounded-2xl border bg-gradient-to-r ${style.bg} p-3 animate-stagger stagger-${Math.min(i + 1, 6)}`}
+                className={`relative rounded-2xl border bg-gradient-to-r ${style.bg} p-3 animate-stagger stagger-${Math.min(i + 1, 6)}${rank === 1 ? ' tilt-card' : ''}`}
               >
                 {/* Rank badge */}
                 <span

@@ -21,6 +21,7 @@ import {
   Activity,
 } from 'lucide-react';
 import AddClientModal from '../components/AddClientModal';
+import { EmailCompositionModal } from '@/components/EmailCompositionModal';
 
 interface Invoice {
   id: string;
@@ -180,6 +181,21 @@ export default function ClientsTableClient({ clients, stats }: Props) {
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<'spend' | 'name' | 'recent'>('spend');
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  // Phase 6 #20: Email composition modal state
+  const [emailModal, setEmailModal] = useState<{
+    open: boolean;
+    to: string;
+    subject: string;
+    body: string;
+    templateKey?: string;
+    title?: string;
+    description?: string;
+  }>({
+    open: false,
+    to: '',
+    subject: '',
+    body: '',
+  });
   const [clientInvoices, setClientInvoices] = useState<Invoice[] | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [stageFilter, setStageFilter] = useState<LifecycleStage | 'all'>('all');
@@ -708,12 +724,30 @@ export default function ClientsTableClient({ clients, stats }: Props) {
                 }
                 const maxBucket = Math.max(1, ...buckets.map((b) => b.count));
 
-                // Stage-specific suggested action
-                const stageAction: Record<LifecycleStage, { text: string; cta: string; href: string }> = {
+                // Stage-specific suggested action — Phase 6 #20:
+                // mailto links replaced with the EmailCompositionModal.
+                const stageAction: Record<LifecycleStage, {
+                  text: string;
+                  cta: string;
+                  href?: string;
+                  email?: {
+                    subject: string;
+                    body: string;
+                    templateKey: string;
+                    title: string;
+                    description: string;
+                  };
+                }> = {
                   new: {
                     text: 'New customer — send a welcome email to encourage repeat business.',
                     cta: 'Send welcome email',
-                    href: `mailto:${selectedClient.email ?? ''}?subject=Welcome%20to%20${encodeURIComponent(selectedClient.company || 'our service')}`,
+                    email: {
+                      subject: `Welcome to ${selectedClient.company || 'our service'}!`,
+                      body: `Hi {{customer_name}},\n\nWelcome aboard! We're thrilled to have you on board.\n\nAs a thank-you for joining, we'd love to offer you a 10% discount on your first invoice. Just reply to this email and we'll get you set up.\n\nLooking forward to working with you.\n\nBest regards,\nThe {{workspace_name}} team`,
+                      templateKey: 'lifecycle-welcome',
+                      title: 'Welcome email',
+                      description: 'Congratulate the new customer and offer a first-purchase incentive.',
+                    },
                   },
                   active: {
                     text: 'Engaged customer — consider offering a loyalty discount or upsell.',
@@ -723,12 +757,24 @@ export default function ClientsTableClient({ clients, stats }: Props) {
                   at_risk: {
                     text: 'Activity slowing down — send a re-engagement email or promotion.',
                     cta: 'Re-engage customer',
-                    href: `mailto:${selectedClient.email ?? ''}?subject=We%20miss%20you!`,
+                    email: {
+                      subject: `We miss you at ${selectedClient.company || 'our service'}!`,
+                      body: `Hi {{customer_name}},\n\nWe noticed you haven't been around lately and we wanted to reach out.\n\nTo welcome you back, here's a 15% loyalty discount on your next invoice. Just reply to this email or click any "Pay" link and the discount will be applied at checkout.\n\nWe'd love to hear what we can do better — let us know.\n\nBest regards,\nThe {{workspace_name}} team`,
+                      templateKey: 'lifecycle-reattract',
+                      title: 'Re-engagement email',
+                      description: 'Reach out to an at-risk customer with a re-engagement offer.',
+                    },
                   },
                   churned: {
                     text: 'This customer has been inactive for over 60 days. Send a win-back campaign.',
                     cta: 'Win back customer',
-                    href: `mailto:${selectedClient.email ?? ''}?subject=Let%27s%20reconnect`,
+                    email: {
+                      subject: `Let's reconnect — special offer inside`,
+                      body: `Hi {{customer_name}},\n\nIt's been a while since we last saw you, and we'd love to win you back.\n\nAs a thank-you for being a past customer, we're offering you a 25% discount on your next 3 invoices. No strings attached.\n\nJust reply to this email and we'll send over a fresh invoice with the discount applied.\n\nHope to hear from you soon!\n\nBest regards,\nThe {{workspace_name}} team`,
+                      templateKey: 'lifecycle-winback',
+                      title: 'Win-back email',
+                      description: 'Send a win-back campaign with a strong incentive to return.',
+                    },
                   },
                   lead: {
                     text: 'Lead with no transactions yet — send your first invoice to convert them.',
@@ -737,6 +783,22 @@ export default function ClientsTableClient({ clients, stats }: Props) {
                   },
                 };
                 const action = stageAction[stage];
+
+                const openEmailModal = () => {
+                  if (!action.email || !selectedClient.email) return;
+                  setEmailModal({
+                    open: true,
+                    to: selectedClient.email,
+                    subject: action.email.subject,
+                    body: action.email.body
+                      .replace(/\{\{customer_name\}\}/g, selectedClient.name)
+                      .replace(/\{\{company\}\}/g, selectedClient.company || '')
+                      .replace(/\{\{workspace_name\}\}/g, 'ThubPay'),
+                    templateKey: action.email.templateKey,
+                    title: action.email.title,
+                    description: action.email.description,
+                  });
+                };
 
                 return (
                   <div className="space-y-4">
@@ -756,16 +818,26 @@ export default function ClientsTableClient({ clients, stats }: Props) {
                       <p className="text-[11px] text-zinc-300 leading-relaxed mb-2.5">
                         {action.text}
                       </p>
-                      {selectedClient.email && (
+                      {action.email && selectedClient.email ? (
+                        <button
+                          type="button"
+                          onClick={openEmailModal}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[11px] font-semibold text-zinc-200 transition-colors hover-lift"
+                        >
+                          <Mail className="w-3 h-3" />
+                          {action.cta}
+                          <ChevronRight className="w-3 h-3" />
+                        </button>
+                      ) : action.href ? (
                         <a
                           href={action.href}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[11px] font-semibold text-zinc-200 transition-colors"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[11px] font-semibold text-zinc-200 transition-colors hover-lift"
                         >
                           <Mail className="w-3 h-3" />
                           {action.cta}
                           <ChevronRight className="w-3 h-3" />
                         </a>
-                      )}
+                      ) : null}
                     </div>
 
                     {/* 6-month payment sparkline */}
@@ -873,6 +945,18 @@ export default function ClientsTableClient({ clients, stats }: Props) {
       )}
 
       <AddClientModal open={showAddModal} onClose={() => setShowAddModal(false)} />
+
+      {/* Phase 6 #20: Email Composition Modal (replaces mailto: links) */}
+      <EmailCompositionModal
+        open={emailModal.open}
+        onOpenChange={(open) => setEmailModal((m) => ({ ...m, open }))}
+        to={emailModal.to}
+        subject={emailModal.subject}
+        body={emailModal.body}
+        templateKey={emailModal.templateKey}
+        title={emailModal.title}
+        description={emailModal.description}
+      />
     </>
   );
 }
