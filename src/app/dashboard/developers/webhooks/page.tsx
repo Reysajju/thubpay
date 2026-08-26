@@ -58,7 +58,12 @@ export default async function WebhooksPage() {
     }),
   ]);
 
-  // Phase 6: fetch failed deliveries with retry info
+  // Phase 6: fetch failed deliveries with retry info.
+  // Phase 7 #33: take 26 (not 25) so we can detect "has more" without
+  // an extra count query — if 26 rows come back, at least one more page
+  // of failed deliveries exists on the server. We slice off the 26th
+  // row before passing to the client component, and pass hasMoreInitial
+  // as a separate prop.
   const failedDeliveries = await db.webhookDelivery.findMany({
     where: {
       workspaceId,
@@ -69,8 +74,11 @@ export default async function WebhooksPage() {
       webhookEndpoint: { select: { label: true, url: true } },
     },
     orderBy: { attemptedAt: 'desc' },
-    take: 25,
+    take: 26,
   });
+
+  const hasMoreInitial = failedDeliveries.length > 25;
+  const initialDeliveries = failedDeliveries.slice(0, 25);
 
   const stats = {
     total: events.length,
@@ -253,8 +261,13 @@ export default async function WebhooksPage() {
           )}
         </div>
 
-        {/* Phase 6: Failed Deliveries & Retries */}
-        <FailedDeliveriesCard failedDeliveries={failedDeliveries} />
+        {/* Phase 6: Failed Deliveries & Retries.
+            Phase 7 #33: pass the initial page + hasMoreInitial flag so
+            the client component can render a "Load more" button. */}
+        <FailedDeliveriesCard
+          initialFailedDeliveries={initialDeliveries}
+          hasMoreInitial={hasMoreInitial}
+        />
       </div>
     </section>
   );

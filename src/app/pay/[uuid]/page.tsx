@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import InvoiceTrackingPixel from '@/app/invoice/[id]/components/InvoiceTrackingPixel';
 import {
@@ -43,11 +44,11 @@ export default async function PayPage({ params, searchParams }: PayPageProps) {
   const { error: errorParam } = await searchParams;
 
   // ── Safe DB lookup ──────────────────────────────────────────────
-  // Use Prisma.Payload to derive the proper type for the result of
-  // findUnique WITH the include clause (avoids "Property 'client' does
-  // not exist on type" since the bare ReturnType doesn't know about
-  // the include).
-  let invoice: any = null;
+  // Proper Prisma payload type — include clause is now reflected at
+  // the type level (client + workspace are guaranteed to be loaded).
+  let invoice: Prisma.InvoiceGetPayload<{
+    include: { client: true; workspace: true };
+  }> | null = null;
   let dbError = false;
   try {
     invoice = await db.invoice.findUnique({

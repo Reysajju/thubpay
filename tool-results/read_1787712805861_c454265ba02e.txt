@@ -1,0 +1,1173 @@
+     1→'use client';
+     2→
+     3→import React, { useState, useEffect } from 'react';
+     4→import {
+     5→  setMonthlyTarget,
+     6→  addGatewayCredential,
+     7→  deleteGatewayCredential,
+     8→  toggleGatewayActive,
+     9→  setDefaultGateway,
+    10→  createBrand,
+    11→  updateNotificationPreferences,
+    12→  getNotificationPreferences,
+    13→} from '../actions';
+    14→import {
+    15→  Settings,
+    16→  CreditCard,
+    17→  Target,
+    18→  Plus,
+    19→  Trash2,
+    20→  Key,
+    21→  AlertTriangle,
+    22→  CheckCircle,
+    23→  Eye,
+    24→  EyeOff,
+    25→  Building2,
+    26→  DollarSign,
+    27→  Zap,
+    28→  Star,
+    29→  Power,
+    30→  Loader2,
+    31→  Upload,
+    32→  Shield,
+    33→  Bell,
+    34→  Rocket,
+    35→  RotateCcw,
+    36→} from 'lucide-react';
+    37→import { ConfirmDialog } from '@/components/ConfirmDialog';
+    38→
+    39→interface GatewayCredential {
+    40→  id: string;
+    41→  gateway_slug: string;
+    42→  label: string;
+    43→  publishable_key: string | null;
+    44→  mode: string;
+    45→  created_at: string;
+    46→}
+    47→
+    48→interface Workspace {
+    49→  id: string;
+    50→  name: string;
+    51→  plan: string;
+    52→  monthly_target_cents: number | null;
+    53→}
+    54→
+    55→interface OnboardingStateLike {
+    56→  stepGateway: boolean;
+    57→  stepBrand: boolean;
+    58→  stepClient: boolean;
+    59→  stepInvoice: boolean;
+    60→  walkthroughSkipped: boolean;
+    61→  completionPct: number;
+    62→  completed: boolean;
+    63→}
+    64→
+    65→interface Props {
+    66→  workspace: Workspace;
+    67→  gateways: GatewayCredential[];
+    68→  initialOnboarding?: OnboardingStateLike | null;
+    69→}
+    70→
+    71→type Tab = 'general' | 'gateways' | 'billing' | 'notifications';
+    72→
+    73→const GATEWAY_PROVIDERS = [
+    74→  { value: 'stripe', label: 'Stripe', icon: '💳' },
+    75→  { value: 'paypal', label: 'PayPal', icon: '🅿️' },
+    76→  { value: 'square', label: 'Square', icon: '⬜' },
+    77→  { value: 'razorpay', label: 'Razorpay', icon: '⚡' },
+    78→  { value: 'adyen', label: 'Adyen', icon: '🔷' },
+    79→  { value: 'authorize_net', label: 'Authorize.Net', icon: '🔐' },
+    80→  { value: 'braintree', label: 'Braintree', icon: '🔶' },
+    81→  { value: 'mollie', label: 'Mollie', icon: '🔵' },
+    82→  { value: 'custom', label: 'Custom Gateway', icon: '🔌' },
+    83→] as const;
+    84→
+    85→const GATEWAY_ICONS: Record<string, string> = {
+    86→  stripe: '💳',
+    87→  paypal: '🅿️',
+    88→  square: '⬜',
+    89→  adyen: '🔷',
+    90→  razorpay: '⚡',
+    91→  authorize_net: '🔐',
+    92→  braintree: '🔶',
+    93→  mollie: '🔵',
+    94→  custom: '🔌',
+    95→  manual: '✋',
+    96→};
+    97→
+    98→const PLAN_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
+    99→  free: { label: 'Free', color: 'text-zinc-400', bg: 'bg-zinc-500/10', border: 'border-zinc-500/25' },
+   100→  pro: { label: 'Pro', color: 'text-[#10B981]', bg: 'bg-[#10B981]/10', border: 'border-[#10B981]/25' },
+   101→  scale: { label: 'Scale', color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/25' },
+   102→  enterprise: { label: 'Enterprise', color: 'text-cyan-400', bg: 'bg-cyan-500/10', border: 'border-cyan-500/25' },
+   103→};
+   104→
+   105→export default function SettingsClient({ workspace, gateways: initialGateways, initialOnboarding }: Props) {
+   106→  const [activeTab, setActiveTab] = useState<Tab>('general');
+   107→
+   108→  // ── Target state ──────────────────────────────────────────────
+   109→  const [targetUsd, setTargetUsd] = useState<string>(
+   110→    workspace.monthly_target_cents ? (workspace.monthly_target_cents / 100).toString() : '0'
+   111→  );
+   112→  const [targetLoading, setTargetLoading] = useState(false);
+   113→  const [targetMessage, setTargetMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+   114→
+   115→  // ── Workspace name state ──────────────────────────────────────
+   116→  const [workspaceName, setWorkspaceName] = useState(workspace.name);
+   117→  const [nameLoading, setNameLoading] = useState(false);
+   118→  const [nameMessage, setNameMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+   119→
+   120→  // ── Gateway list state ────────────────────────────────────────
+   121→  const [gateways, setGateways] = useState<GatewayCredential[]>(initialGateways);
+   122→  const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
+   123→  const [toggleLoading, setToggleLoading] = useState<string | null>(null);
+   124→  const [pendingDeleteGw, setPendingDeleteGw] = useState<{ id: string; labelText: string } | null>(null);
+   125→  const [deleteBusy, setDeleteBusy] = useState(false);
+   126→
+   127→  // ── Gateway form state ────────────────────────────────────────
+   128→  const [gatewaySlug, setGatewaySlug] = useState('stripe');
+   129→  const [label, setLabel] = useState('');
+   130→  const [publishableKey, setPublishableKey] = useState('');
+   131→  const [secretKey, setSecretKey] = useState('');
+   132→  const [mode, setMode] = useState('test');
+   133→  const [isDefault, setIsDefault] = useState(false);
+   134→  const [gatewayLoading, setGatewayLoading] = useState(false);
+   135→  const [gatewayMessage, setGatewayMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+   136→  const [showSecret, setShowSecret] = useState(false);
+   137→
+   138→  // ── Onboarding reset state ─────────────────────────────────────
+   139→  const [onboardingResetLoading, setOnboardingResetLoading] = useState(false);
+   140→  const [onboardingResetMessage, setOnboardingResetMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+   141→  const [pendingResetOnboarding, setPendingResetOnboarding] = useState(false);
+   142→
+   143→  // ── Live onboarding state (Phase 6: wire up to real API) ───────
+   144→  // Seed from SSR-provided initialOnboarding (avoids loading flash).
+   145→  // Re-fetch on tab switch to "general" so the values stay fresh after
+   146→  // the user resets / replays onboarding and navigates back.
+   147→  const [onboardingState, setOnboardingState] = useState<OnboardingStateLike | null>(initialOnboarding ?? null);
+   148→  const [onboardingLoading, setOnboardingLoading] = useState(false);
+   149→
+   150→  useEffect(() => {
+   151→    let cancelled = false;
+   152→    // Skip fetch on first mount if we already have SSR data — the
+   153→    // server just rendered this so it's fresh enough.
+   154→    if (initialOnboarding && onboardingState && activeTab !== 'general') return;
+   155→    if (activeTab !== 'general') return;
+   156→    setOnboardingLoading(true);
+   157→    fetch('/api/dashboard/onboarding', { cache: 'no-store' })
+   158→      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+   159→      .then((data: OnboardingStateLike) => {
+   160→        if (!cancelled) setOnboardingState(data);
+   161→      })
+   162→      .catch(() => { /* swallow — keep SSR/last-known state */ })
+   163→      .finally(() => { if (!cancelled) setOnboardingLoading(false); });
+   164→    return () => { cancelled = true; };
+   165→  }, [activeTab]);
+   166→
+   167→  // Derived values for the status pills
+   168→  const obState = onboardingState;
+   169→  const obStepsDone = obState
+   170→    ? [obState.stepGateway, obState.stepBrand, obState.stepClient, obState.stepInvoice].filter(Boolean).length
+   171→    : 4;
+   172→  const obPct = obState ? obState.completionPct : 100;
+   173→  const obCompleted = obState ? obState.completed : true;
+   174→
+   175→  // ── Handle onboarding reset ─────────────────────────────────────
+   176→  const handleResetOnboarding = async () => {
+   177→    setOnboardingResetLoading(true);
+   178→    setOnboardingResetMessage(null);
+   179→    try {
+   180→      const res = await fetch('/api/dashboard/onboarding/reset', { method: 'POST' });
+   181→      const data = await res.json();
+   182→      if (res.ok && data?.success) {
+   183→        setOnboardingResetMessage({
+   184→          type: 'success',
+   185→          text: 'Onboarding reset! Reloading dashboard…',
+   186→        });
+   187→        // Give the user a moment to see the success state, then
+   188→        // bounce them to the dashboard so the walkthrough reappears.
+   189→        setTimeout(() => {
+   190→          window.location.href = '/dashboard';
+   191→        }, 800);
+   192→      } else {
+   193→        setOnboardingResetMessage({
+   194→          type: 'error',
+   195→          text: data?.error || 'Failed to reset onboarding. Please try again.',
+   196→        });
+   197→      }
+   198→    } catch (err: any) {
+   199→      setOnboardingResetMessage({
+   200→        type: 'error',
+   201→        text: err?.message || 'Unexpected error while resetting onboarding.',
+   202→      });
+   203→    } finally {
+   204→      setOnboardingResetLoading(false);
+   205→      setPendingResetOnboarding(false);
+   206→    }
+   207→  };
+   208→
+   209→  // ── Handle set target ─────────────────────────────────────────
+   210→  const handleSetTarget = async (e: React.FormEvent<HTMLFormElement>) => {
+   211→    e.preventDefault();
+   212→    setTargetLoading(true);
+   213→    setTargetMessage(null);
+   214→    const formData = new FormData(e.currentTarget);
+   215→    try {
+   216→      await setMonthlyTarget(formData);
+   217→      setTargetMessage({ type: 'success', text: 'Monthly revenue target updated successfully!' });
+   218→    } catch (err: any) {
+   219→      setTargetMessage({ type: 'error', text: err.message || 'Failed to update target.' });
+   220→    } finally {
+   221→      setTargetLoading(false);
+   222→    }
+   223→  };
+   224→
+   225→  // ── Handle workspace name update ──────────────────────────────
+   226→  const handleNameUpdate = async (e: React.FormEvent<HTMLFormElement>) => {
+   227→    e.preventDefault();
+   228→    setNameLoading(true);
+   229→    setNameMessage(null);
+   230→    const formData = new FormData(e.currentTarget);
+   231→    try {
+   232→      await createBrand(formData);
+   233→      setNameMessage({ type: 'success', text: 'Workspace name updated!' });
+   234→    } catch (err: any) {
+   235→      setNameMessage({ type: 'error', text: err.message || 'Failed to update name.' });
+   236→    } finally {
+   237→      setNameLoading(false);
+   238→    }
+   239→  };
+   240→
+   241→  // ── Handle add gateway ────────────────────────────────────────
+   242→  const handleAddGateway = async (e: React.FormEvent<HTMLFormElement>) => {
+   243→    e.preventDefault();
+   244→    setGatewayLoading(true);
+   245→    setGatewayMessage(null);
+   246→    const formData = new FormData(e.currentTarget);
+   247→    if (isDefault) formData.append('is_default', 'on');
+   248→    try {
+   249→      const res = await addGatewayCredential(formData);
+   250→      if (res?.error) {
+   251→        setGatewayMessage({ type: 'error', text: res.error });
+   252→      } else {
+   253→        setGatewayMessage({ type: 'success', text: 'Payment gateway connected successfully!' });
+   254→        setLabel('');
+   255→        setPublishableKey('');
+   256→        setSecretKey('');
+   257→        setIsDefault(false);
+   258→        setGateways((prev) => [
+   259→          {
+   260→            id: crypto.randomUUID(),
+   261→            gateway_slug: gatewaySlug,
+   262→            label,
+   263→            publishable_key: publishableKey || null,
+   264→            mode,
+   265→            created_at: new Date().toISOString(),
+   266→          },
+   267→          ...prev,
+   268→        ]);
+   269→      }
+   270→    } catch (err: any) {
+   271→      setGatewayMessage({ type: 'error', text: err.message || 'Failed to save gateway.' });
+   272→    } finally {
+   273→      setGatewayLoading(false);
+   274→    }
+   275→  };
+   276→
+   277→  // ── Handle delete gateway ─────────────────────────────────────
+   278→  const handleDeleteGateway = (id: string, labelText: string) => {
+   279→    setPendingDeleteGw({ id, labelText });
+   280→  };
+   281→
+   282→  const handleConfirmDeleteGateway = async () => {
+   283→    if (!pendingDeleteGw) return;
+   284→    const { id } = pendingDeleteGw;
+   285→    setDeleteBusy(true);
+   286→    setDeleteLoading(id);
+   287→    try {
+   288→      const res = await deleteGatewayCredential(id);
+   289→      if (res?.error) {
+   290→        alert(`Error: ${res.error}`);
+   291→      } else {
+   292→        setGateways((prev) => prev.filter((gw) => gw.id !== id));
+   293→      }
+   294→    } catch (err: any) {
+   295→      alert(`Error: ${err.message}`);
+   296→    } finally {
+   297→      setDeleteLoading(null);
+   298→      setDeleteBusy(false);
+   299→      setPendingDeleteGw(null);
+   300→    }
+   301→  };
+   302→
+   303→  const handleSetDefault = async (id: string) => {
+   304→    setToggleLoading(id);
+   305→    try {
+   306→      await setDefaultGateway(id);
+   307→      window.location.reload();
+   308→    } catch {
+   309→      setToggleLoading(null);
+   310→    }
+   311→  };
+   312→
+   313→  const planConfig = PLAN_CONFIG[workspace.plan] || PLAN_CONFIG.free;
+   314→  const activeGatewayCount = gateways.filter((g) => g.mode === 'live').length;
+   315→  const testGatewayCount = gateways.filter((g) => g.mode === 'test').length;
+   316→
+   317→  const tabs: { id: Tab; label: string; icon: any }[] = [
+   318→    { id: 'general', label: 'General', icon: Building2 },
+   319→    { id: 'gateways', label: 'Gateways', icon: CreditCard },
+   320→    { id: 'billing', label: 'Billing', icon: DollarSign },
+   321→    { id: 'notifications', label: 'Notifications', icon: Bell },
+   322→  ];
+   323→
+   324→  return (
+   325→    <section className="p-4 sm:p-6 lg:p-8">
+   326→      <div className="max-w-5xl mx-auto">
+   327→        {/* Header */}
+   328→        <div className="mb-8 animate-fadeIn">
+   329→          <div className="flex items-center gap-2 mb-1">
+   330→            <span className={`flex items-center gap-1.5 text-[11px] font-semibold ${planConfig.color} ${planConfig.bg} px-2 py-0.5 rounded-full border ${planConfig.border}`}>
+   331→              <Star className="w-3 h-3" />
+   332→              {planConfig.label} Plan
+   333→            </span>
+   334→          </div>
+   335→          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Settings</h1>
+   336→          <p className="text-zinc-500 text-sm mt-1">
+   337→            Manage your workspace profile, payment gateways, and billing preferences.
+   338→          </p>
+   339→        </div>
+   340→
+   341→        {/* Tab navigation */}
+   342→        <div className="flex items-center gap-1 mb-6 bg-[#131316] border border-[#252529] rounded-xl p-1 w-fit animate-fadeIn">
+   343→          {tabs.map((tab) => {
+   344→            const Icon = tab.icon;
+   345→            const isActive = activeTab === tab.id;
+   346→            const count = tab.id === 'gateways' ? gateways.length : undefined;
+   347→            return (
+   348→              <button
+   349→                key={tab.id}
+   350→                onClick={() => setActiveTab(tab.id)}
+   351→                className={`flex items-center gap-2 px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition-all ${
+   352→                  isActive
+   353→                    ? 'bg-[#10B981]/20 text-[#10B981] shadow-sm'
+   354→                    : 'text-zinc-400 hover:text-white hover:bg-white/5'
+   355→                }`}
+   356→              >
+   357→                <Icon className="w-3.5 h-3.5" />
+   358→                {tab.label}
+   359→                {count !== undefined && (
+   360→                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+   361→                    isActive ? 'bg-[#10B981]/20 text-[#10B981]' : 'bg-zinc-800 text-zinc-500'
+   362→                  }`}>
+   363→                    {count}
+   364→                  </span>
+   365→                )}
+   366→              </button>
+   367→            );
+   368→          })}
+   369→        </div>
+   370→
+   371→        {/* ── GENERAL TAB ───────────────────────────────────────── */}
+   372→        {activeTab === 'general' && (
+   373→          <div className="space-y-6 animate-fadeIn">
+   374→            {/* Workspace Profile Card */}
+   375→            <div className="glass-card rounded-2xl p-5 sm:p-6">
+   376→              <div className="flex items-center gap-2.5 mb-5">
+   377→                <div className="w-8 h-8 rounded-lg bg-[#10B981]/10 flex items-center justify-center">
+   378→                  <Building2 className="w-4 h-4 text-[#10B981]" />
+   379→                </div>
+   380→                <div>
+   381→                  <h2 className="text-base font-bold text-white">Workspace Profile</h2>
+   382→                  <p className="text-[11px] text-zinc-500">Basic workspace information</p>
+   383→                </div>
+   384→              </div>
+   385→
+   386→              <form onSubmit={handleNameUpdate} className="space-y-4 max-w-lg">
+   387→                <div>
+   388→                  <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1.5">
+   389→                    Workspace Name
+   390→                  </label>
+   391→                  <input
+   392→                    type="text"
+   393→                    name="name"
+   394→                    required
+   395→                    value={workspaceName}
+   396→                    onChange={(e) => setWorkspaceName(e.target.value)}
+   397→                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#1a1a1f] border border-[#252529] text-sm text-white outline-none focus:border-[#10B981]/40 transition-all"
+   398→                  />
+   399→                </div>
+   400→
+   401→                <div className="grid grid-cols-2 gap-3">
+   402→                  <div className="p-3 rounded-xl bg-[#0a0a0b] border border-[#252529]/50">
+   403→                    <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Plan</p>
+   404→                    <p className={`text-sm font-bold ${planConfig.color}`}>{planConfig.label}</p>
+   405→                  </div>
+   406→                  <div className="p-3 rounded-xl bg-[#0a0a0b] border border-[#252529]/50">
+   407→                    <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Workspace ID</p>
+   408→                    <p className="text-xs font-mono text-zinc-400 truncate">{workspace.id}</p>
+   409→                  </div>
+   410→                </div>
+   411→
+   412→                {nameMessage && (
+   413→                  <div className={`p-3 rounded-xl border flex items-center gap-2 text-xs ${
+   414→                    nameMessage.type === 'success'
+   415→                      ? 'bg-green-500/10 border-green-500/20 text-green-400'
+   416→                      : 'bg-red-500/10 border-red-500/20 text-red-400'
+   417→                  }`}>
+   418→                    {nameMessage.type === 'success' ? <CheckCircle className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
+   419→                    {nameMessage.text}
+   420→                  </div>
+   421→                )}
+   422→
+   423→                <button
+   424→                  type="submit"
+   425→                  disabled={nameLoading}
+   426→                  className="btn-gradient px-4 py-2 rounded-xl text-black text-xs font-bold disabled:opacity-50 transition-all"
+   427→                >
+   428→                  {nameLoading ? 'Saving...' : 'Save Changes'}
+   429→                </button>
+   430→              </form>
+   431→            </div>
+   432→
+   433→            {/* Onboarding & Walkthrough Card — Phase 5 carry-over #19 */}
+   434→            <div className="glass-card rounded-2xl p-5 sm:p-6 hover-lift">
+   435→              <div className="flex items-center gap-2.5 mb-5">
+   436→                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500/20 to-cyan-500/10 border border-emerald-500/20 flex items-center justify-center">
+   437→                  <Rocket className="w-4 h-4 text-emerald-400" />
+   438→                </div>
+   439→                <div>
+   440→                  <h2 className="text-base font-bold text-white">Onboarding & Walkthrough</h2>
+   441→                  <p className="text-[11px] text-zinc-500">
+   442→                    Re-trigger the setup checklist & walkthrough modal
+   443→                  </p>
+   444→                </div>
+   445→              </div>
+   446→
+   447→              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+   448→                <div className="p-3 rounded-xl bg-[#0a0a0b] border border-[#252529]/50">
+   449→                  <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
+   450→                    Status
+   451→                  </p>
+   452→                  <p className={`text-sm font-bold flex items-center gap-1.5 ${obCompleted ? 'text-emerald-400' : 'text-amber-400'}`}>
+   453→                    <span className="relative w-1.5 h-1.5 rounded-full bg-current">
+   454→                      <span className={`absolute inset-0 rounded-full pulse-ring ${obCompleted ? 'text-emerald-400' : 'text-amber-400'}`} />
+   455→                    </span>
+   456→                    {onboardingLoading ? 'Refreshing…' : obCompleted ? 'Completed' : 'In progress'}
+   457→                  </p>
+   458→                </div>
+   459→                <div className="p-3 rounded-xl bg-[#0a0a0b] border border-[#252529]/50">
+   460→                  <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
+   461→                    Steps
+   462→                  </p>
+   463→                  <p className="text-sm font-bold text-white">{obStepsDone} / 4</p>
+   464→                </div>
+   465→                <div className="p-3 rounded-xl bg-[#0a0a0b] border border-[#252529]/50">
+   466→                  <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
+   467→                    Progress
+   468→                  </p>
+   469→                  <p className={`text-sm font-bold ${obPct === 100 ? 'text-cyan-400' : obPct >= 50 ? 'text-emerald-400' : 'text-amber-400'}`}>{obPct}%</p>
+   470→                </div>
+   471→              </div>
+   472→
+   473→              {/* Step-by-step breakdown — only show if onboarding not complete */}
+   474→              {obState && !obCompleted && (
+   475→                <div className="mb-5 p-3 rounded-xl bg-amber-500/5 border border-amber-500/15">
+   476→                  <p className="text-[10px] font-bold text-amber-400/80 uppercase tracking-wider mb-2">
+   477→                    Outstanding steps
+   478→                  </p>
+   479→                  <ul className="space-y-1.5 text-xs">
+   480→                    <li className={`flex items-center gap-2 ${obState.stepGateway ? 'text-zinc-500 line-through' : 'text-zinc-200'}`}>
+   481→                      <span className={`w-1.5 h-1.5 rounded-full ${obState.stepGateway ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+   482→                      Connect a payment gateway
+   483→                    </li>
+   484→                    <li className={`flex items-center gap-2 ${obState.stepBrand ? 'text-zinc-500 line-through' : 'text-zinc-200'}`}>
+   485→                      <span className={`w-1.5 h-1.5 rounded-full ${obState.stepBrand ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+   486→                      Set up your brand / workspace name
+   487→                    </li>
+   488→                    <li className={`flex items-center gap-2 ${obState.stepClient ? 'text-zinc-500 line-through' : 'text-zinc-200'}`}>
+   489→                      <span className={`w-1.5 h-1.5 rounded-full ${obState.stepClient ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+   490→                      Add your first customer
+   491→                    </li>
+   492→                    <li className={`flex items-center gap-2 ${obState.stepInvoice ? 'text-zinc-500 line-through' : 'text-zinc-200'}`}>
+   493→                      <span className={`w-1.5 h-1.5 rounded-full ${obState.stepInvoice ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+   494→                      Create your first invoice
+   495→                    </li>
+   496→                  </ul>
+   497→                </div>
+   498→              )}
+   499→
+   500→              <p className="text-xs text-zinc-400 mb-4 leading-relaxed">
+   501→                {obCompleted
+   502→                  ? 'Onboarding is complete for this workspace. Resetting will re-enable the dashboard checklist card and replay the walkthrough modal — useful for demos, training new team members, or re-checking that all setup steps are still valid.'
+   503→                  : `Onboarding is ${obPct}% complete. Resetting will replay the walkthrough modal and re-show the checklist card so you can pick up where you left off.`}
+   504→              </p>
+   505→
+   506→              {onboardingResetMessage && (
+   507→                <div className={`p-3 rounded-xl border flex items-center gap-2 text-xs mb-4 ${
+   508→                  onboardingResetMessage.type === 'success'
+   509→                    ? 'bg-green-500/10 border-green-500/20 text-green-400'
+   510→                    : 'bg-red-500/10 border-red-500/20 text-red-400'
+   511→                }`}>
+   512→                  {onboardingResetMessage.type === 'success'
+   513→                    ? <CheckCircle className="w-3.5 h-3.5" />
+   514→                    : <AlertTriangle className="w-3.5 h-3.5" />}
+   515→                  {onboardingResetMessage.text}
+   516→                </div>
+   517→              )}
+   518→
+   519→              <div className="flex flex-col sm:flex-row gap-3">
+   520→                <button
+   521→                  type="button"
+   522→                  onClick={() => setPendingResetOnboarding(true)}
+   523→                  disabled={onboardingResetLoading}
+   524→                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/15 hover:border-amber-500/50 text-amber-400 text-xs font-bold transition-all disabled:opacity-50 hover-lift"
+   525→                >
+   526→                  {onboardingResetLoading ? (
+   527→                    <>
+   528→                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+   529→                      Resetting…
+   530→                    </>
+   531→                  ) : (
+   532→                    <>
+   533→                      <RotateCcw className="w-3.5 h-3.5" />
+   534→                      Reset onboarding
+   535→                    </>
+   536→                  )}
+   537→                </button>
+   538→                <a
+   539→                  href="/dashboard"
+   540→                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-[#2e2e33] bg-[#18181c] hover:border-[#3e3e44] hover:bg-[#1d1d22] text-zinc-200 text-xs font-semibold transition-all hover-lift"
+   541→                >
+   542→                  Back to dashboard
+   543→                </a>
+   544→              </div>
+   545→            </div>
+   546→
+   547→            {/* Logo upload placeholder */}
+   548→            <div className="glass-card rounded-2xl p-5 sm:p-6">
+   549→              <div className="flex items-center gap-2.5 mb-5">
+   550→                <div className="w-8 h-8 rounded-lg bg-[#10B981]/10 flex items-center justify-center">
+   551→                  <Upload className="w-4 h-4 text-[#10B981]" />
+   552→                </div>
+   553→                <div>
+   554→                  <h2 className="text-base font-bold text-white">Brand Logo</h2>
+   555→                  <p className="text-[11px] text-zinc-500">Displayed on invoices and checkout pages</p>
+   556→                </div>
+   557→              </div>
+   558→              <div className="flex items-center gap-4">
+   559→                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#059669] to-[#34D399] flex items-center justify-center text-2xl font-black text-black flex-shrink-0">
+   560→                  {workspace.name.charAt(0).toUpperCase()}
+   561→                </div>
+   562→                <div className="flex-1">
+   563→                  <p className="text-xs text-zinc-400 mb-2">PNG, JPG, or SVG up to 5MB</p>
+   564→                  <button
+   565→                    onClick={() => {
+   566→                      const input = document.createElement('input');
+   567→                      input.type = 'file';
+   568→                      input.accept = 'image/*';
+   569→                      input.onchange = async (e) => {
+   570→                        const file = (e.target as HTMLInputElement).files?.[0];
+   571→                        if (!file) return;
+   572→                        const formData = new FormData();
+   573→                        formData.append('file', file);
+   574→                        try {
+   575→                          await fetch('/api/dashboard/upload-logo', { method: 'POST', body: formData });
+   576→                          window.location.reload();
+   577→                        } catch {
+   578→                          alert('Upload failed');
+   579→                        }
+   580→                      };
+   581→                      input.click();
+   582→                    }}
+   583→                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1a1a1f] border border-[#252529] text-xs font-medium text-zinc-300 hover:text-[#10B981] hover:border-[#10B981]/30 transition-all"
+   584→                  >
+   585→                    <Upload className="w-3.5 h-3.5" />
+   586→                    Upload Logo
+   587→                  </button>
+   588→                </div>
+   589→              </div>
+   590→            </div>
+   591→          </div>
+   592→        )}
+   593→
+   594→        {/* ── GATEWAYS TAB ──────────────────────────────────────── */}
+   595→        {activeTab === 'gateways' && (
+   596→          <div className="space-y-6 animate-fadeIn">
+   597→            {/* Gateway stats */}
+   598→            <div className="grid grid-cols-3 gap-3">
+   599→              <div className="glass-card rounded-xl p-3 text-center">
+   600→                <p className="text-lg font-black text-white">{gateways.length}</p>
+   601→                <p className="text-[10px] font-bold text-zinc-500 uppercase">Total</p>
+   602→              </div>
+   603→              <div className="glass-card rounded-xl p-3 text-center">
+   604→                <p className="text-lg font-black text-green-400">{activeGatewayCount}</p>
+   605→                <p className="text-[10px] font-bold text-zinc-500 uppercase">Live</p>
+   606→              </div>
+   607→              <div className="glass-card rounded-xl p-3 text-center">
+   608→                <p className="text-lg font-black text-amber-400">{testGatewayCount}</p>
+   609→                <p className="text-[10px] font-bold text-zinc-500 uppercase">Test</p>
+   610→              </div>
+   611→            </div>
+   612→
+   613→            {/* Connected Gateways */}
+   614→            <div className="glass-card rounded-2xl p-5 sm:p-6">
+   615→              <div className="flex items-center justify-between mb-5">
+   616→                <div className="flex items-center gap-2.5">
+   617→                  <div className="w-8 h-8 rounded-lg bg-[#10B981]/10 flex items-center justify-center">
+   618→                    <CreditCard className="w-4 h-4 text-[#10B981]" />
+   619→                  </div>
+   620→                  <div>
+   621→                    <h2 className="text-base font-bold text-white">Connected Gateways</h2>
+   622→                    <p className="text-[11px] text-zinc-500">Your BYOG integrations</p>
+   623→                  </div>
+   624→                </div>
+   625→                <a
+   626→                  href="/dashboard/settings/gateways"
+   627→                  className="text-xs text-[#10B981] hover:text-[#34D399] transition-colors"
+   628→                >
+   629→                  Advanced →
+   630→                </a>
+   631→              </div>
+   632→
+   633→              <div className="space-y-2">
+   634→                {gateways.length === 0 ? (
+   635→                  <div className="py-10 text-center">
+   636→                    <CreditCard className="w-10 h-10 text-zinc-700 mx-auto mb-2" />
+   637→                    <p className="text-sm text-zinc-500">No gateways connected yet</p>
+   638→                    <p className="text-xs text-zinc-600 mt-1">Add a gateway below to start accepting payments</p>
+   639→                  </div>
+   640→                ) : (
+   641→                  gateways.map((gw, i) => (
+   642→                    <div
+   643→                      key={gw.id}
+   644→                      className={`flex items-center gap-3 p-3 rounded-xl bg-[#0a0a0b] border border-[#252529]/50 hover:border-[#10B981]/30 transition-all animate-stagger stagger-${Math.min(i + 1, 6)}`}
+   645→                    >
+   646→                      <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-[#1a1a1f] border border-[#252529] flex items-center justify-center text-lg">
+   647→                        {GATEWAY_ICONS[gw.gateway_slug] || '🔗'}
+   648→                      </div>
+   649→                      <div className="flex-1 min-w-0">
+   650→                        <div className="flex items-center gap-2">
+   651→                          <p className="text-sm font-semibold text-white truncate">{gw.label}</p>
+   652→                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider border ${
+   653→                            gw.mode === 'live'
+   654→                              ? 'bg-green-500/10 text-green-400 border-green-500/20'
+   655→                              : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+   656→                          }`}>
+   657→                            {gw.mode}
+   658→                          </span>
+   659→                        </div>
+   660→                        <p className="text-[11px] text-zinc-500 uppercase font-bold tracking-wider mt-0.5">
+   661→                          {GATEWAY_PROVIDERS.find((p) => p.value === gw.gateway_slug)?.label ?? gw.gateway_slug}
+   662→                        </p>
+   663→                        {gw.publishable_key && (
+   664→                          <p className="text-[10px] font-mono text-zinc-600 truncate mt-0.5">
+   665→                            {gw.publishable_key.slice(0, 20)}...
+   666→                          </p>
+   667→                        )}
+   668→                      </div>
+   669→                      <button
+   670→                        onClick={() => handleSetDefault(gw.id)}
+   671→                        disabled={toggleLoading === gw.id}
+   672→                        className="flex-shrink-0 p-2 rounded-lg text-zinc-500 hover:text-[#10B981] hover:bg-[#10B981]/10 transition-all"
+   673→                        title="Set as default"
+   674→                      >
+   675→                        {toggleLoading === gw.id ? (
+   676→                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+   677→                        ) : (
+   678→                          <Star className="w-3.5 h-3.5" />
+   679→                        )}
+   680→                      </button>
+   681→                      <button
+   682→                        onClick={() => handleDeleteGateway(gw.id, gw.label)}
+   683→                        disabled={deleteLoading === gw.id}
+   684→                        className="flex-shrink-0 p-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
+   685→                        title="Delete gateway"
+   686→                      >
+   687→                        <Trash2 className={`w-3.5 h-3.5 ${deleteLoading === gw.id ? 'animate-pulse text-red-400' : ''}`} />
+   688→                      </button>
+   689→                    </div>
+   690→                  ))
+   691→                )}
+   692→              </div>
+   693→            </div>
+   694→
+   695→            {/* Add New Gateway Form */}
+   696→            <div className="glass-card rounded-2xl p-5 sm:p-6">
+   697→              <div className="flex items-center gap-2.5 mb-5">
+   698→                <div className="w-8 h-8 rounded-lg bg-[#10B981]/10 flex items-center justify-center">
+   699→                  <Plus className="w-4 h-4 text-[#10B981]" />
+   700→                </div>
+   701→                <div>
+   702→                  <h2 className="text-base font-bold text-white">Connect New Gateway</h2>
+   703→                  <p className="text-[11px] text-zinc-500">Secret keys are encrypted at rest</p>
+   704→                </div>
+   705→              </div>
+   706→
+   707→              <form onSubmit={handleAddGateway} className="space-y-4">
+   708→                <div className="grid sm:grid-cols-2 gap-3">
+   709→                  <div>
+   710→                    <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1.5">
+   711→                      Gateway Provider
+   712→                    </label>
+   713→                    <select
+   714→                      name="gateway_slug"
+   715→                      value={gatewaySlug}
+   716→                      onChange={(e) => setGatewaySlug(e.target.value)}
+   717→                      className="w-full px-3 py-2 rounded-xl bg-[#1a1a1f] border border-[#252529] text-sm text-white outline-none focus:border-[#10B981]/40 transition-all cursor-pointer"
+   718→                    >
+   719→                      {GATEWAY_PROVIDERS.map((p) => (
+   720→                        <option key={p.value} value={p.value}>
+   721→                          {p.icon} {p.label}
+   722→                        </option>
+   723→                      ))}
+   724→                    </select>
+   725→                  </div>
+   726→                  <div>
+   727→                    <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1.5">
+   728→                      Mode
+   729→                    </label>
+   730→                    <select
+   731→                      name="mode"
+   732→                      value={mode}
+   733→                      onChange={(e) => setMode(e.target.value)}
+   734→                      className="w-full px-3 py-2 rounded-xl bg-[#1a1a1f] border border-[#252529] text-sm text-white outline-none focus:border-[#10B981]/40 transition-all cursor-pointer"
+   735→                    >
+   736→                      <option value="test">🧪 Test / Sandbox</option>
+   737→                      <option value="live">🟢 Live / Production</option>
+   738→                    </select>
+   739→                  </div>
+   740→                </div>
+   741→
+   742→                <div>
+   743→                  <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1.5">
+   744→                    Label / Name
+   745→                  </label>
+   746→                  <input
+   747→                    type="text"
+   748→                    name="label"
+   749→                    required
+   750→                    value={label}
+   751→                    onChange={(e) => setLabel(e.target.value)}
+   752→                    placeholder="e.g. Stripe USD Live Wallet"
+   753→                    className="w-full px-3 py-2 rounded-xl bg-[#1a1a1f] border border-[#252529] text-sm text-white outline-none focus:border-[#10B981]/40 transition-all"
+   754→                  />
+   755→                </div>
+   756→
+   757→                <div className="grid sm:grid-cols-2 gap-3">
+   758→                  <div>
+   759→                    <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1.5">
+   760→                      Publishable Key (Optional)
+   761→                    </label>
+   762→                    <input
+   763→                      type="text"
+   764→                      name="publishable_key"
+   765→                      value={publishableKey}
+   766→                      onChange={(e) => setPublishableKey(e.target.value)}
+   767→                      placeholder="pk_test_..."
+   768→                      className="w-full px-3 py-2 rounded-xl bg-[#1a1a1f] border border-[#252529] text-sm text-white outline-none focus:border-[#10B981]/40 transition-all font-mono"
+   769→                    />
+   770→                  </div>
+   771→                  <div>
+   772→                    <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1.5">
+   773→                      Secret Key (Required)
+   774→                    </label>
+   775→                    <div className="relative">
+   776→                      <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500" />
+   777→                      <input
+   778→                        type={showSecret ? 'text' : 'password'}
+   779→                        name="secret_key"
+   780→                        required
+   781→                        value={secretKey}
+   782→                        onChange={(e) => setSecretKey(e.target.value)}
+   783→                        placeholder="sk_test_..."
+   784→                        className="w-full pl-9 pr-9 py-2 rounded-xl bg-[#1a1a1f] border border-[#252529] text-sm text-white outline-none focus:border-[#10B981]/40 transition-all font-mono"
+   785→                      />
+   786→                      <button
+   787→                        type="button"
+   788→                        onClick={() => setShowSecret(!showSecret)}
+   789→                        className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white transition-colors"
+   790→                      >
+   791→                        {showSecret ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+   792→                      </button>
+   793→                    </div>
+   794→                  </div>
+   795→                </div>
+   796→
+   797→                <label className="flex items-center gap-2 cursor-pointer">
+   798→                  <input
+   799→                    type="checkbox"
+   800→                    checked={isDefault}
+   801→                    onChange={(e) => setIsDefault(e.target.checked)}
+   802→                    className="w-4 h-4 rounded accent-[#10B981]"
+   803→                  />
+   804→                  <span className="text-xs text-zinc-300">Set as default gateway</span>
+   805→                </label>
+   806→
+   807→                {gatewayMessage && (
+   808→                  <div className={`p-3 rounded-xl border flex items-center gap-2 text-xs ${
+   809→                    gatewayMessage.type === 'success'
+   810→                      ? 'bg-green-500/10 border-green-500/20 text-green-400'
+   811→                      : 'bg-red-500/10 border-red-500/20 text-red-400'
+   812→                  }`}>
+   813→                    {gatewayMessage.type === 'success' ? <CheckCircle className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
+   814→                    {gatewayMessage.text}
+   815→                  </div>
+   816→                )}
+   817→
+   818→                <button
+   819→                  type="submit"
+   820→                  disabled={gatewayLoading}
+   821→                  className="btn-gradient flex items-center gap-2 px-4 py-2.5 rounded-xl text-black text-xs font-bold disabled:opacity-50 transition-all"
+   822→                >
+   823→                  {gatewayLoading ? (
+   824→                    <>
+   825→                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+   826→                      Connecting...
+   827→                    </>
+   828→                  ) : (
+   829→                    <>
+   830→                      <Plus className="w-3.5 h-3.5" />
+   831→                      Connect Gateway
+   832→                    </>
+   833→                  )}
+   834→                </button>
+   835→              </form>
+   836→            </div>
+   837→          </div>
+   838→        )}
+   839→
+   840→        {/* ── BILLING TAB ──────────────────────────────────────── */}
+   841→        {activeTab === 'billing' && (
+   842→          <div className="space-y-6 animate-fadeIn">
+   843→            {/* Financial Target */}
+   844→            <div className="glass-card rounded-2xl p-5 sm:p-6">
+   845→              <div className="flex items-center gap-2.5 mb-5">
+   846→                <div className="w-8 h-8 rounded-lg bg-[#10B981]/10 flex items-center justify-center">
+   847→                  <Target className="w-4 h-4 text-[#10B981]" />
+   848→                </div>
+   849→                <div>
+   850→                  <h2 className="text-base font-bold text-white">Revenue Target</h2>
+   851→                  <p className="text-[11px] text-zinc-500">Monthly gross volume goal for dashboard tracking</p>
+   852→                </div>
+   853→              </div>
+   854→
+   855→              <form onSubmit={handleSetTarget} className="space-y-4 max-w-md">
+   856→                <div>
+   857→                  <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1.5">
+   858→                    Monthly Gross Target (USD)
+   859→                  </label>
+   860→                  <div className="relative">
+   861→                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-bold text-sm">$</span>
+   862→                    <input
+   863→                      type="number"
+   864→                      name="target_usd"
+   865→                      required
+   866→                      min="0"
+   867→                      step="0.01"
+   868→                      value={targetUsd}
+   869→                      onChange={(e) => setTargetUsd(e.target.value)}
+   870→                      placeholder="5000.00"
+   871→                      className="w-full pl-8 pr-4 py-2.5 rounded-xl bg-[#1a1a1f] border border-[#252529] text-sm text-white outline-none focus:border-[#10B981]/40 transition-all"
+   872→                    />
+   873→                  </div>
+   874→                  <p className="text-[11px] text-zinc-600 mt-1.5">
+   875→                    Current target: <span className="text-[#10B981] font-semibold">
+   876→                      ${(workspace.monthly_target_cents ? workspace.monthly_target_cents / 100 : 0).toFixed(2)}
+   877→                    </span>
+   878→                  </p>
+   879→                </div>
+   880→
+   881→                {targetMessage && (
+   882→                  <div className={`p-3 rounded-xl border flex items-center gap-2 text-xs ${
+   883→                    targetMessage.type === 'success'
+   884→                      ? 'bg-green-500/10 border-green-500/20 text-green-400'
+   885→                      : 'bg-red-500/10 border-red-500/20 text-red-400'
+   886→                  }`}>
+   887→                    {targetMessage.type === 'success' ? <CheckCircle className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
+   888→                    {targetMessage.text}
+   889→                  </div>
+   890→                )}
+   891→
+   892→                <button
+   893→                  type="submit"
+   894→                  disabled={targetLoading}
+   895→                  className="btn-gradient flex items-center gap-2 px-4 py-2 rounded-xl text-black text-xs font-bold disabled:opacity-50 transition-all"
+   896→                >
+   897→                  {targetLoading ? (
+   898→                    <>
+   899→                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+   900→                      Updating...
+   901→                    </>
+   902→                  ) : (
+   903→                    <>
+   904→                      <Target className="w-3.5 h-3.5" />
+   905→                      Save Target
+   906→                    </>
+   907→                  )}
+   908→                </button>
+   909→              </form>
+   910→            </div>
+   911→
+   912→            {/* Plan info */}
+   913→            <div className="glass-card rounded-2xl p-5 sm:p-6">
+   914→              <div className="flex items-center gap-2.5 mb-5">
+   915→                <div className="w-8 h-8 rounded-lg bg-[#10B981]/10 flex items-center justify-center">
+   916→                  <Shield className="w-4 h-4 text-[#10B981]" />
+   917→                </div>
+   918→                <div>
+   919→                  <h2 className="text-base font-bold text-white">Current Plan</h2>
+   920→                  <p className="text-[11px] text-zinc-500">Your subscription tier</p>
+   921→                </div>
+   922→              </div>
+   923→
+   924→              <div className={`p-4 rounded-xl border ${planConfig.border} ${planConfig.bg}`}>
+   925→                <div className="flex items-center justify-between mb-3">
+   926→                  <div className="flex items-center gap-2">
+   927→                    <Star className={`w-5 h-5 ${planConfig.color}`} />
+   928→                    <span className={`text-lg font-black ${planConfig.color}`}>{planConfig.label}</span>
+   929→                  </div>
+   930→                  <span className="text-[10px] font-bold text-zinc-500 uppercase">Active</span>
+   931→                </div>
+   932→                <p className="text-xs text-zinc-400">
+   933→                  {workspace.plan === 'free' && 'Basic features for getting started. Upgrade to unlock unlimited gateways and advanced analytics.'}
+   934→                  {workspace.plan === 'pro' && 'Unlimited gateways, advanced analytics, and priority support.'}
+   935→                  {workspace.plan === 'scale' && 'Multi-workspace support, dedicated infrastructure, and SLA guarantees.'}
+   936→                  {workspace.plan === 'enterprise' && 'Custom integrations, dedicated account manager, and white-glove onboarding.'}
+   937→                </p>
+   938→              </div>
+   939→            </div>
+   940→          </div>
+   941→        )}
+   942→
+   943→        {activeTab === 'notifications' && (
+   944→          <NotificationsTab workspaceId={workspace.id} />
+   945→        )}
+   946→
+   947→        <ConfirmDialog
+   948→          open={pendingDeleteGw !== null}
+   949→          onOpenChange={(open) => {
+   950→            if (!open) setPendingDeleteGw(null);
+   951→          }}
+   952→          title="Disconnect gateway?"
+   953→          description={
+   954→            pendingDeleteGw
+   955→              ? `Are you sure you want to disconnect "${pendingDeleteGw.labelText}"? This action cannot be undone.`
+   956→              : undefined
+   957→          }
+   958→          confirmLabel="Disconnect"
+   959→          cancelLabel="Cancel"
+   960→          variant="destructive"
+   961→          loading={deleteBusy}
+   962→          onConfirm={handleConfirmDeleteGateway}
+   963→        />
+   964→
+   965→        <ConfirmDialog
+   966→          open={pendingResetOnboarding}
+   967→          onOpenChange={(open) => {
+   968→            if (!open) setPendingResetOnboarding(false);
+   969→          }}
+   970→          title="Reset onboarding progress?"
+   971→          description="This will mark all 4 onboarding steps as incomplete and replay the walkthrough modal on the dashboard. Existing data (gateways, invoices, clients) will not be affected. This is useful for demos and re-onboarding new team members."
+   972→          confirmLabel="Reset & Replay"
+   973→          cancelLabel="Cancel"
+   974→          variant="default"
+   975→          loading={onboardingResetLoading}
+   976→          onConfirm={handleResetOnboarding}
+   977→        />
+   978→      </div>
+   979→    </section>
+   980→  );
+   981→}
+   982→
+   983→// ─── Notifications Tab ───────────────────────────────────────
+   984→
+   985→const NOTIFICATION_TYPES = [
+   986→  { type: 'payment', label: 'Payments', desc: 'Payment received, invoice paid, refund issued', icon: '💰', color: 'text-emerald-400' },
+   987→  { type: 'success', label: 'Success', desc: 'Invoice sent, gateway connected, encryption upgraded', icon: '✅', color: 'text-green-400' },
+   988→  { type: 'info', label: 'Info', desc: 'New gateway connected, ledger entries, general activity', icon: 'ℹ️', color: 'text-cyan-400' },
+   989→  { type: 'warning', label: 'Warnings', desc: 'Invoice overdue, SLA threshold updates', icon: '⚠️', color: 'text-amber-400' },
+   990→  { type: 'error', label: 'Errors', desc: 'SLA breaches, webhook failures, refund errors', icon: '❌', color: 'text-red-400' },
+   991→  { type: 'dispute', label: 'Disputes', desc: 'Payment disputes, chargebacks', icon: '⚖️', color: 'text-red-400' },
+   992→];
+   993→
+   994→function NotificationsTab({ workspaceId }: { workspaceId: string }) {
+   995→  const [mutedTypes, setMutedTypes] = useState<string[]>([]);
+   996→  const [loading, setLoading] = useState(true);
+   997→  const [saving, setSaving] = useState(false);
+   998→  const [saved, setSaved] = useState(false);
+   999→  const [error, setError] = useState<string | null>(null);
+  1000→
+  1001→  // Load preferences on mount
+  1002→  React.useEffect(() => {
+  1003→    let cancelled = false;
+  1004→    (async () => {
+  1005→      try {
+  1006→        const res = (await getNotificationPreferences()) as any;
+  1007→        if (!cancelled && res?.success) {
+  1008→          setMutedTypes(res.mutedTypes || []);
+  1009→        }
+  1010→      } catch (err: any) {
+  1011→        if (!cancelled) setError(err?.message || 'Failed to load preferences');
+  1012→      } finally {
+  1013→        if (!cancelled) setLoading(false);
+  1014→      }
+  1015→    })();
+  1016→    return () => { cancelled = true; };
+  1017→  }, [workspaceId]);
+  1018→
+  1019→  function toggleType(type: string) {
+  1020→    setMutedTypes((prev) =>
+  1021→      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
+  1022→    );
+  1023→    setSaved(false);
+  1024→  }
+  1025→
+  1026→  async function handleSave() {
+  1027→    setSaving(true);
+  1028→    setError(null);
+  1029→    setSaved(false);
+  1030→    try {
+  1031→      const res = (await updateNotificationPreferences(mutedTypes)) as any;
+  1032→      if (res?.success) {
+  1033→        setSaved(true);
+  1034→        setTimeout(() => setSaved(false), 2500);
+  1035→      } else {
+  1036→        setError(res?.error || 'Failed to save preferences');
+  1037→      }
+  1038→    } catch (err: any) {
+  1039→      setError(err?.message || 'Unexpected error');
+  1040→    } finally {
+  1041→      setSaving(false);
+  1042→    }
+  1043→  }
+  1044→
+  1045→  if (loading) {
+  1046→    return (
+  1047→      <div className="glass-card rounded-2xl p-8 text-center">
+  1048→        <div className="inline-block w-5 h-5 border-2 border-[#10B981]/30 border-t-[#10B981] rounded-full animate-spin" />
+  1049→        <p className="text-xs text-zinc-500 mt-2">Loading notification preferences...</p>
+  1050→      </div>
+  1051→    );
+  1052→  }
+  1053→
+  1054→  const activeCount = NOTIFICATION_TYPES.length - mutedTypes.length;
+  1055→
+  1056→  return (
+  1057→    <div className="animate-fadeIn space-y-6">
+  1058→      {/* Header card */}
+  1059→      <div className="glass-card rounded-2xl p-5 sm:p-6">
+  1060→        <div className="flex items-start gap-3 mb-4">
+  1061→          <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-[#10B981]/10 flex items-center justify-center">
+  1062→            <Bell className="w-5 h-5 text-[#10B981]" />
+  1063→          </div>
+  1064→          <div className="flex-1">
+  1065→            <h2 className="text-lg font-bold text-white">Notification Preferences</h2>
+  1066→            <p className="text-xs text-zinc-500 mt-0.5">
+  1067→              Control which types of notifications you receive. Muted types won&apos;t appear in the bell or the notifications API.
+  1068→            </p>
+  1069→          </div>
+  1070→          <div className="flex items-center gap-2 text-[10px]">
+  1071→            <span className="px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-bold">
+  1072→              {activeCount} ACTIVE
+  1073→            </span>
+  1074→            {mutedTypes.length > 0 && (
+  1075→              <span className="px-2 py-1 rounded-full bg-zinc-700/30 text-zinc-400 border border-zinc-700/40 font-bold">
+  1076→                {mutedTypes.length} MUTED
+  1077→              </span>
+  1078→            )}
+  1079→          </div>
+  1080→        </div>
+  1081→
+  1082→        {/* Type toggles */}
+  1083→        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+  1084→          {NOTIFICATION_TYPES.map((nt) => {
+  1085→            const isMuted = mutedTypes.includes(nt.type);
+  1086→            return (
+  1087→              <div
+  1088→                key={nt.type}
+  1089→                className={`p-3 rounded-xl border transition-all ${
+  1090→                  isMuted
+  1091→                    ? 'bg-zinc-700/[0.04] border-zinc-700/30 opacity-60'
+  1092→                    : 'bg-[#0a0a0c]/40 border-[#252529]/40'
+  1093→                }`}
+  1094→              >
+  1095→                <div className="flex items-start gap-2.5">
+  1096→                  <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-[#1a1a1f] flex items-center justify-center text-base">
+  1097→                    {nt.icon}
+  1098→                  </div>
+  1099→                  <div className="flex-1 min-w-0">
+  1100→                    <div className="flex items-center gap-2 mb-0.5">
+  1101→                      <p className={`text-sm font-bold ${isMuted ? 'text-zinc-500' : 'text-white'}`}>
+  1102→                        {nt.label}
+  1103→                      </p>
+  1104→                      <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
+  1105→                        isMuted
+  1106→                          ? 'bg-zinc-700/30 text-zinc-500 border border-zinc-700/40'
+  1107→                          : `bg-emerald-500/10 ${nt.color} border border-emerald-500/20`
+  1108→                      }`}>
+  1109→                        {isMuted ? 'MUTED' : 'ON'}
+  1110→                      </span>
+  1111→                    </div>
+  1112→                    <p className="text-[11px] text-zinc-500">{nt.desc}</p>
+  1113→                  </div>
+  1114→                  <button
+  1115→                    onClick={() => toggleType(nt.type)}
+  1116→                    className={`flex-shrink-0 relative w-9 h-5 rounded-full transition-colors ${
+  1117→                      isMuted ? 'bg-zinc-700' : 'bg-[#10B981]'
+  1118→                    }`}
+  1119→                    role="switch"
+  1120→                    aria-checked={!isMuted}
+  1121→                    aria-label={`Toggle ${nt.label} notifications`}
+  1122→                  >
+  1123→                    <span
+  1124→                      className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+  1125→                        isMuted ? 'left-0.5' : 'translate-x-4 left-0.5'
+  1126→                      }`}
+  1127→                    />
+  1128→                  </button>
+  1129→                </div>
+  1130→              </div>
+  1131→            );
+  1132→          })}
+  1133→        </div>
+  1134→
+  1135→        {/* Save button */}
+  1136→        <div className="flex items-center justify-between mt-5 pt-4 border-t border-[#252529]/40">
+  1137→          <p className="text-[11px] text-zinc-500">
+  1138→            Changes apply to new notifications immediately. Existing notifications are not affected.
+  1139→          </p>
+  1140→          <div className="flex items-center gap-2">
+  1141→            {saved && (
+  1142→              <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-400 animate-scaleIn">
+  1143→                <CheckCircle className="w-3 h-3" />
+  1144→                Saved
+  1145→              </span>
+  1146→            )}
+  1147→            <button
+  1148→              onClick={handleSave}
+  1149→              disabled={saving}
+  1150→              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-[#10B981] to-[#059669] text-white text-sm font-bold hover:opacity-90 disabled:opacity-50 transition"
+  1151→            >
+  1152→              {saving ? (
+  1153→                <>
+  1154→                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+  1155→                  Saving…
+  1156→                </>
+  1157→              ) : (
+  1158→                'Save Preferences'
+  1159→              )}
+  1160→            </button>
+  1161→          </div>
+  1162→        </div>
+  1163→
+  1164→        {error && (
+  1165→          <div className="mt-3 p-2.5 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-300">
+  1166→            {error}
+  1167→          </div>
+  1168→        )}
+  1169→      </div>
+  1170→    </div>
+  1171→  );
+  1172→}
+  1173→

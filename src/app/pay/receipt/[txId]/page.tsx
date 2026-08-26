@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import {
   CheckCircle2,
@@ -51,9 +52,18 @@ export default async function ReceiptViewPage({ params }: ReceiptPageProps) {
   const { txId } = await params;
 
   // ── Safe DB lookup ──────────────────────────────────────────────
-  // Use `any` here because the bare ReturnType doesn't know about
-  // the include clause. (Build-time type drift fix; runtime is safe.)
-  let tx: any = null;
+  // Proper Prisma payload type — include clause is now reflected at
+  // the type level (invoice → client + workspace subset are loaded).
+  let tx: Prisma.TransactionGetPayload<{
+    include: {
+      invoice: {
+        include: {
+          client: true;
+          workspace: { select: { name: true; logoUrl: true } };
+        };
+      };
+    };
+  }> | null = null;
   let dbError = false;
   try {
     tx = await db.transaction.findUnique({

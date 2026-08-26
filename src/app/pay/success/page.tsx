@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import {
   CheckCircle2,
@@ -55,11 +56,15 @@ export default async function PaymentSuccessPage({ searchParams }: SuccessPagePr
   const { invoice: invoiceId, method, tx, email } = await searchParams;
 
   // Try to load the full invoice so we can render a real receipt.
-  // (Use `any` for invoice/transaction so the include clause is
-  //  reflected in the inferred type — bare ReturnType doesn't know
-  //  about includes.)
-  let invoice: any = null;
-  let transaction: any = null;
+  // Proper Prisma payload types — include clauses are now reflected
+  // at the type level (client + workspace loaded for invoice).
+  let invoice: Prisma.InvoiceGetPayload<{
+    include: { client: true; workspace: true };
+  }> | null = null;
+  // `transaction` is fetched with no include clause, so its inferred
+  // return type already covers the full Transaction scalar shape.
+  let transaction: Awaited<ReturnType<typeof db.transaction.findUnique>> | null =
+    null;
   let dbError = false;
 
   if (invoiceId) {

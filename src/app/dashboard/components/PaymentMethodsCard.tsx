@@ -88,7 +88,7 @@ export default function PaymentMethodsCard({ breakdown, totalVolume }: Props) {
       </div>
 
       {entries.length === 0 ? (
-        <div className="flex flex-col items-center justify-center text-center py-10">
+        <div className="flex flex-col items-center justify-center text-center py-10 skeleton-pulse">
           <span className="flex items-center justify-center w-12 h-12 rounded-2xl bg-[#10B981]/10 border border-[#10B981]/20 mb-3">
             <CreditCard className="w-5 h-5 text-[#10B981]/50" />
           </span>

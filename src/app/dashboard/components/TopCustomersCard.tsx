@@ -92,7 +92,7 @@ export default function TopCustomersCard({ customers, totalCustomerSpend }: Prop
           className="flex items-center gap-1 text-xs text-[#10B981] hover:text-[#34D399] transition-colors group"
         >
           View all
-          <ArrowUpRight className="w-3 h-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+          <ArrowUpRight className="w-3 h-3 icon-bounce group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
         </Link>
       </div>
 
@@ -102,7 +102,7 @@ export default function TopCustomersCard({ customers, totalCustomerSpend }: Prop
           <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-0.5">
             Combined Spend
           </p>
-          <p className="text-xl sm:text-2xl font-black text-white tabular-nums">
+          <p className="text-xl sm:text-2xl font-black text-white tabular-nums number-roll">
             {toUsdFull(totalShown)}
           </p>
         </div>
@@ -128,7 +128,7 @@ export default function TopCustomersCard({ customers, totalCustomerSpend }: Prop
 
       {/* Customer leaderboard */}
       {top.length === 0 ? (
-        <div className="flex flex-col items-center justify-center text-center py-10">
+        <div className="flex flex-col items-center justify-center text-center py-10 skeleton-pulse">
           <span className="flex items-center justify-center w-12 h-12 rounded-2xl bg-[#10B981]/10 border border-[#10B981]/20 mb-3">
             <Crown className="w-5 h-5 text-[#10B981]/50" />
           </span>

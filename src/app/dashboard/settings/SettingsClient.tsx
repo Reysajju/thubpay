@@ -350,7 +350,7 @@ export default function SettingsClient({ workspace, gateways: initialGateways, i
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-2 px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition-all ${
                   isActive
-                    ? 'bg-[#10B981]/20 text-[#10B981] shadow-sm'
+                    ? 'bg-[#10B981]/20 text-[#10B981] shadow-sm tab-active-underline'
                     : 'text-zinc-400 hover:text-white hover:bg-white/5'
                 }`}
               >

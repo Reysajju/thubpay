@@ -1,4 +1,10 @@
+import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
+
+// Type alias for the Invoice shape returned by `db.invoice.findMany` with
+// `include: { client: true }`. Used by `mapInvoice` so the mapper is fully
+// type-safe (replaces the previous `r: any` cast that lost type info).
+type InvoiceWithClient = Prisma.InvoiceGetPayload<{ include: { client: true } }>;
 
 // ─── Data Access Layer ────────────────────────────────────────
 // All dashboard data reads go through here. Backed by Prisma/SQLite.
@@ -133,7 +139,7 @@ export async function getWorkspaceForUser(userId: string) {
 
 // ─── Invoices ─────────────────────────────────────────────────
 
-function mapInvoice(r: any): DemoInvoice {
+function mapInvoice(r: InvoiceWithClient): DemoInvoice {
   return {
     id: r.id,
     invoice_number: r.invoiceNumber,
@@ -814,8 +820,26 @@ export async function getTopCustomers(workspaceId: string): Promise<TopCustomer[
  * historical transactions.
  *
  * Returns a summary of what changed.
+ *
+ * Phase 7 #32 (batching): The UPDATE loop is now batched via
+ * `db.$transaction([...])` in chunks of `batchSize` (default 50). This
+ * replaces the per-client `db.client.update` round-trip with a single
+ * transaction per chunk, cutting N writes down to ceil(N/50) commits.
+ *
+ * SQLite has a 999-parameter limit per query; each `client.update`
+ * inside the array-form transaction uses ~3 params, so the safe
+ * upper bound is ~333 updates per transaction. We cap the default at
+ * 50 for headroom, and callers can tune via `batchSize` (1-500 is
+ * validated at the cron endpoint).
+ *
+ * @param workspaceId  Workspace to recompute.
+ * @param batchSize    Number of changed-client UPDATEs per
+ *                     `db.$transaction([...])` call. Default 50.
  */
-export async function recomputeClientSpendColumns(workspaceId: string): Promise<{
+export async function recomputeClientSpendColumns(
+  workspaceId: string,
+  batchSize: number = 50
+): Promise<{
   totalClients: number;
   updated: number;
   unchanged: number;
@@ -866,18 +890,21 @@ export async function recomputeClientSpendColumns(workspaceId: string): Promise<
     entry.transactionCount += 1;
   }
 
+  // Phase 7 #32 (batching): Collect changed clients into a single array,
+  // then issue all UPDATEs as one `db.$transaction([...])` per chunk.
+  // This avoids N round-trips to the DB log per workspace and gives us
+  // one atomic commit per chunk of `batchSize`.
+  const batch: Array<{ id: string; totalSpend: number; transactionCount: number }> = [];
   let updated = 0;
   let unchanged = 0;
 
   for (const c of clients) {
     const e = spendByClient.get(c.id)!;
     if (e.totalSpend !== c.totalSpendCents || e.transactionCount !== c.transactionCount) {
-      await db.client.update({
-        where: { id: c.id },
-        data: {
-          totalSpendCents: e.totalSpend,
-          transactionCount: e.transactionCount,
-        },
+      batch.push({
+        id: c.id,
+        totalSpend: e.totalSpend,
+        transactionCount: e.transactionCount,
       });
       updated++;
     } else {
@@ -885,7 +912,419 @@ export async function recomputeClientSpendColumns(workspaceId: string): Promise<
     }
   }
 
+  // Sanitize the caller-provided batchSize: must be a positive integer.
+  // Default to 50 on anything invalid (also guards against NaN / 0 / negatives).
+  const safeBatchSize = Number.isInteger(batchSize) && batchSize > 0 ? batchSize : 50;
+
+  // Chunk the batch and commit each chunk in a single transaction.
+  // SQLite has a 999-parameter limit per query and each client.update uses
+  // ~3 params, so the practical max is ~333 — `safeBatchSize` is capped at
+  // 50 by default but the cron endpoint validates 1-500 for advanced users.
+  for (let i = 0; i < batch.length; i += safeBatchSize) {
+    const chunk = batch.slice(i, i + safeBatchSize);
+    await db.$transaction(
+      chunk.map((c) =>
+        db.client.update({
+          where: { id: c.id },
+          data: {
+            totalSpendCents: c.totalSpend,
+            transactionCount: c.transactionCount,
+          },
+        })
+      )
+    );
+  }
+
   return { totalClients: clients.length, updated, unchanged };
+}
+
+// ─── Customer Churn-Risk Scoring ─────────────────────────────
+// Phase 7-E (addresses Phase 3 worklog item #15: hardcoded 7/30/60-day
+// lifecycle thresholds). This is a transparent, explainable heuristic
+// churn-risk score (0-100; 100 = highest risk), NOT a black-box ML model.
+// Every score is decomposable into named contributing factors so users
+// can see WHY a customer is at risk and what action to take.
+//
+// Scoring is composed of 4 weighted components:
+//
+//   1. Recency (40%): daysSinceLastPayment.
+//        - Never paid → 100 (critical)
+//        - Interpolated linearly between bucket anchors:
+//            0d → 5, 30d → 25, 60d → 50, 90d → 75, 180d → 95
+//        - days > 180 → 95 (cap)
+//
+//   2. Frequency (25%): transactionCount.
+//        - 0 → 100, 1 → 70, 2-3 → 40, 4-10 → 15, >10 → 5
+//
+//   3. Monetary trend (20%): count of succeeded txs in the last 90 days
+//      vs the count in the 90 days BEFORE that.
+//        - recent < previous        → 70
+//        - recent == 0 & previous>0 → 95
+//        - recent > previous        → 10
+//        - both 0                   → 100
+//        - only 1 period has data    → 50 (neutral)
+//
+//   4. Avg payment gap (15%): avgDaysBetweenPayments.
+//        - If daysSinceLastPayment > avgDaysBetweenPayments * 1.5 → 80
+//        - Else → 15
+//        - If either is null (<2 payments OR never paid) → 50 (neutral)
+//
+// Final riskScore = round(
+//   recency*0.4 + frequency*0.25 + monetaryTrend*0.20 + avgGap*0.15
+// ), clamped to [0, 100].
+//
+// Tier mapping:
+//   critical: >= 80
+//   high:     >= 60 and < 80
+//   medium:   >= 40 and < 60
+//   low:      < 40
+//
+// Recommended action mirrors the existing lifecycle CTAs (Phase 6
+// EmailCompositionModal template keys `lifecycle-winback` /
+// `lifecycle-reattract`):
+//   critical: "Send win-back email with 25% discount"
+//   high:     "Send re-engagement email with 15% discount"
+//   medium:   "Schedule a check-in call"
+//   low:      "No action needed — healthy customer"
+//
+// NOTE on code duplication: the transaction→client matching logic
+// (invoice.clientId join OR customerEmail case-insensitive match) is
+// intentionally DUPLICATED from `getTopCustomers` rather than refactored
+// into a shared helper. The task spec explicitly forbade touching
+// `getTopCustomers` in this pass, so duplication is preferred to keep
+// the blast radius small. A future task can extract a
+// `matchTransactionsToClients` helper shared by both.
+
+export interface ChurnRiskScore {
+  clientId: string;
+  name: string;
+  email: string | null;
+  company: string | null;
+  totalSpendCents: number;
+  transactionCount: number;
+  lastPaymentAt: string | null; // ISO date or null if never paid
+  daysSinceLastPayment: number | null; // null if never paid
+  avgDaysBetweenPayments: number | null; // null if <2 payments
+  riskScore: number; // 0-100 (100 = highest churn risk)
+  riskTier: 'low' | 'medium' | 'high' | 'critical';
+  riskFactors: string[]; // human-readable list of contributing factors
+  recommendedAction: string; // suggested next step
+}
+
+// Maps each churn-risk tier to the suggested next step. Mirrors the
+// existing lifecycle CTA template keys from Phase 6 EmailCompositionModal
+// (lifecycle-winback / lifecycle-reattract / lifecycle-checkin).
+const ACTION_BY_TIER: Record<ChurnRiskScore['riskTier'], string> = {
+  critical: 'Send win-back email with 25% discount',
+  high: 'Send re-engagement email with 15% discount',
+  medium: 'Schedule a check-in call',
+  low: 'No action needed — healthy customer',
+};
+
+export async function getChurnRiskScores(workspaceId: string): Promise<{
+  atRisk: ChurnRiskScore[]; // sorted by riskScore desc, top 5
+  summary: {
+    total: number; // total clients scored
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+    averageRiskScore: number;
+    potentialRevenueAtRiskCents: number; // sum of totalSpendCents for high+critical
+  };
+}> {
+  // Skip the demo workspace — the demo store has no real churn signal.
+  if (workspaceId === 'ws-demo-workspace') {
+    return {
+      atRisk: [],
+      summary: {
+        total: 0,
+        critical: 0,
+        high: 0,
+        medium: 0,
+        low: 0,
+        averageRiskScore: 0,
+        potentialRevenueAtRiskCents: 0,
+      },
+    };
+  }
+
+  // Load clients (id, name, email, company, totalSpendCents,
+  // transactionCount, createdAt).
+  const clients = await db.client.findMany({
+    where: { workspaceId },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      company: true,
+      totalSpendCents: true,
+      transactionCount: true,
+      createdAt: true,
+    },
+  });
+  if (clients.length === 0) {
+    return {
+      atRisk: [],
+      summary: {
+        total: 0,
+        critical: 0,
+        high: 0,
+        medium: 0,
+        low: 0,
+        averageRiskScore: 0,
+        potentialRevenueAtRiskCents: 0,
+      },
+    };
+  }
+
+  // Build the customerEmail → clientId index for fallback matching.
+  const emailToClient = new Map<string, string>();
+  for (const c of clients) {
+    if (c.email) emailToClient.set(c.email.toLowerCase(), c.id);
+  }
+
+  // Load invoice→clientId map (so we can join transactions via invoice).
+  const invoices = await db.invoice.findMany({
+    where: { workspaceId, clientId: { not: null } },
+    select: { id: true, clientId: true },
+  });
+  const invoiceToClient = new Map(invoices.map((inv) => [inv.id, inv.clientId!]));
+
+  // Load all succeeded transactions for the workspace. We need `createdAt`
+  // for the recency / trend / cadence math.
+  const txs = await db.transaction.findMany({
+    where: { workspaceId, status: 'succeeded' },
+    select: {
+      id: true,
+      amountCents: true,
+      customerEmail: true,
+      invoiceId: true,
+      createdAt: true,
+    },
+  });
+
+  // Group succeeded transactions by client → array of createdAt timestamps
+  // + total spend cents. Mirrors `getTopCustomers`'s matching logic.
+  const txByClient = new Map<string, { timestamps: number[]; totalCents: number }>();
+  for (const c of clients) {
+    txByClient.set(c.id, { timestamps: [], totalCents: 0 });
+  }
+
+  for (const tx of txs) {
+    let clientId: string | null = null;
+    // (a) Try invoice linkage first (more reliable).
+    if (tx.invoiceId) {
+      clientId = invoiceToClient.get(tx.invoiceId) ?? null;
+    }
+    // (b) Fall back to customerEmail match.
+    if (!clientId && tx.customerEmail) {
+      clientId = emailToClient.get(tx.customerEmail.toLowerCase()) ?? null;
+    }
+    if (!clientId) continue;
+    const entry = txByClient.get(clientId);
+    if (!entry) continue;
+    entry.timestamps.push(tx.createdAt.getTime());
+    entry.totalCents += tx.amountCents;
+  }
+
+  const now = Date.now();
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const NINETY_DAYS_MS = 90 * DAY_MS;
+
+  // Score each client.
+  const scores: ChurnRiskScore[] = clients.map((c) => {
+    const agg = txByClient.get(c.id)!;
+    const txCount = agg.timestamps.length;
+
+    // ── Recency (40%) ───────────────────────────────────
+    let lastPayMs: number | null = null;
+    if (agg.timestamps.length > 0) {
+      lastPayMs = agg.timestamps.reduce((max, t) => (t > max ? t : max), agg.timestamps[0]);
+    }
+    const lastPaymentAt = lastPayMs !== null ? new Date(lastPayMs).toISOString() : null;
+    const daysSinceLastPayment = lastPayMs !== null
+      ? Math.max(0, Math.floor((now - lastPayMs) / DAY_MS))
+      : null;
+
+    let recencyScore: number;
+    const recencyFactors: string[] = [];
+    if (daysSinceLastPayment === null) {
+      recencyScore = 100;
+      recencyFactors.push('Never made a payment');
+    } else {
+      const d = daysSinceLastPayment;
+      // Piecewise-linear interpolation between bucket anchors.
+      if (d <= 30) {
+        // 0d → 5, 30d → 25
+        recencyScore = 5 + (d / 30) * 20;
+      } else if (d <= 60) {
+        // 30d → 25, 60d → 50
+        recencyScore = 25 + ((d - 30) / 30) * 25;
+      } else if (d <= 90) {
+        // 60d → 50, 90d → 75
+        recencyScore = 50 + ((d - 60) / 30) * 25;
+      } else if (d <= 180) {
+        // 90d → 75, 180d → 95
+        recencyScore = 75 + ((d - 90) / 90) * 20;
+      } else {
+        recencyScore = 95;
+      }
+      // Only surface a recency factor once the client has actually lapsed
+      // past the standard 60-day window (mirrors the existing lifecycle
+      // "lapsed" threshold from Phase 3 #15).
+      if (d > 60) {
+        recencyFactors.push(`No payment in ${d} days`);
+      }
+    }
+
+    // ── Frequency (25%) ─────────────────────────────────
+    let frequencyScore: number;
+    const frequencyFactors: string[] = [];
+    if (txCount === 0) {
+      frequencyScore = 100;
+      // Don't double-add "no transactions" — recency already flagged it.
+    } else if (txCount === 1) {
+      frequencyScore = 70;
+      frequencyFactors.push('Only 1 transaction total');
+    } else if (txCount <= 3) {
+      frequencyScore = 40;
+    } else if (txCount <= 10) {
+      frequencyScore = 15;
+    } else {
+      frequencyScore = 5;
+    }
+
+    // ── Monetary trend (20%) ────────────────────────────
+    // Count succeeded txs in the last 90 days vs the 90 days before that.
+    const recentWindowStart = now - NINETY_DAYS_MS;
+    const previousWindowStart = recentWindowStart - NINETY_DAYS_MS;
+    let recentCount = 0;
+    let previousCount = 0;
+    for (const t of agg.timestamps) {
+      if (t >= recentWindowStart) {
+        recentCount++;
+      } else if (t >= previousWindowStart) {
+        previousCount++;
+      }
+    }
+    let monetaryTrendScore: number;
+    const trendFactors: string[] = [];
+    if (recentCount === 0 && previousCount === 0) {
+      // No activity in the last 180 days. Recency already flags this; we
+      // score 100 here too, but stay silent on the factor list to avoid
+      // duplicate noise.
+      monetaryTrendScore = 100;
+    } else if (recentCount === 0 && previousCount > 0) {
+      monetaryTrendScore = 95;
+      trendFactors.push(`Declining payment trend (recent: 0 vs prior: ${previousCount})`);
+    } else if (recentCount > 0 && previousCount === 0) {
+      // Only recent period has data — new customer, can't establish a trend.
+      monetaryTrendScore = 50;
+    } else if (recentCount < previousCount) {
+      monetaryTrendScore = 70;
+      trendFactors.push(
+        `Declining payment trend (recent: ${recentCount} vs prior: ${previousCount})`
+      );
+    } else if (recentCount > previousCount) {
+      monetaryTrendScore = 10;
+    } else {
+      // equal counts — stable trend, neutral score
+      monetaryTrendScore = 50;
+    }
+
+    // ── Avg payment gap (15%) ───────────────────────────
+    let avgDaysBetweenPayments: number | null = null;
+    if (agg.timestamps.length >= 2) {
+      const sorted = [...agg.timestamps].sort((a, b) => a - b);
+      let totalGap = 0;
+      for (let i = 1; i < sorted.length; i++) {
+        totalGap += sorted[i] - sorted[i - 1];
+      }
+      const avgMs = totalGap / (sorted.length - 1);
+      avgDaysBetweenPayments = Math.round(avgMs / DAY_MS);
+    }
+    let avgGapScore: number;
+    const avgGapFactors: string[] = [];
+    if (avgDaysBetweenPayments === null || daysSinceLastPayment === null) {
+      // Can't compute relative cadence (needs ≥2 payments) OR never paid.
+      // Stay neutral — recency already covers the never-paid case.
+      avgGapScore = 50;
+    } else if (daysSinceLastPayment > avgDaysBetweenPayments * 1.5) {
+      avgGapScore = 80;
+      avgGapFactors.push(
+        `Payment overdue relative to avg ${avgDaysBetweenPayments}-day cadence`
+      );
+    } else {
+      avgGapScore = 15;
+    }
+
+    // ── Final score ─────────────────────────────────────
+    const raw =
+      recencyScore * 0.4 +
+      frequencyScore * 0.25 +
+      monetaryTrendScore * 0.2 +
+      avgGapScore * 0.15;
+    const riskScore = Math.max(0, Math.min(100, Math.round(raw)));
+
+    let riskTier: ChurnRiskScore['riskTier'];
+    if (riskScore >= 80) riskTier = 'critical';
+    else if (riskScore >= 60) riskTier = 'high';
+    else if (riskScore >= 40) riskTier = 'medium';
+    else riskTier = 'low';
+
+    const recommendedAction = ACTION_BY_TIER[riskTier];
+
+    const riskFactors = [
+      ...recencyFactors,
+      ...frequencyFactors,
+      ...trendFactors,
+      ...avgGapFactors,
+    ];
+
+    return {
+      clientId: c.id,
+      name: c.name,
+      email: c.email,
+      company: c.company,
+      totalSpendCents: c.totalSpendCents,
+      transactionCount: c.transactionCount,
+      lastPaymentAt,
+      daysSinceLastPayment,
+      avgDaysBetweenPayments,
+      riskScore,
+      riskTier,
+      riskFactors,
+      recommendedAction,
+    };
+  });
+
+  // Summary stats across ALL scored clients (not just top 5).
+  const summary = {
+    total: scores.length,
+    critical: scores.filter((s) => s.riskTier === 'critical').length,
+    high: scores.filter((s) => s.riskTier === 'high').length,
+    medium: scores.filter((s) => s.riskTier === 'medium').length,
+    low: scores.filter((s) => s.riskTier === 'low').length,
+    averageRiskScore:
+      scores.length > 0
+        ? Math.round(scores.reduce((sum, s) => sum + s.riskScore, 0) / scores.length)
+        : 0,
+    potentialRevenueAtRiskCents: scores
+      .filter((s) => s.riskTier === 'critical' || s.riskTier === 'high')
+      .reduce((sum, s) => sum + s.totalSpendCents, 0),
+  };
+
+  // Top 5 at-risk: sort by riskScore desc (tiebreaker: higher total spend
+  // first — surface revenue-relevant customers above $0-spend ones).
+  const atRisk = [...scores]
+    .sort((a, b) => {
+      if (b.riskScore !== a.riskScore) return b.riskScore - a.riskScore;
+      return b.totalSpendCents - a.totalSpendCents;
+    })
+    .slice(0, 5);
+
+  return { atRisk, summary };
 }
 
 // ─── Finance: Cash Ledger & Metrics ──────────────────────────

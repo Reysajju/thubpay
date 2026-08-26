@@ -10,6 +10,7 @@ import {
   getOnboardingState,
   getTopCustomers,
   getTransactionStats,
+  getChurnRiskScores,
 } from '@/lib/demo-data';
 import DashboardActions from './components/DashboardActions';
 import DashboardOverviewCharts from './components/DashboardOverviewCharts';
@@ -19,6 +20,7 @@ import RecentActivityTimeline from './components/RecentActivityTimeline';
 import OnboardingChecklistCard from './components/OnboardingChecklistCard';
 import TopCustomersCard, { TopCustomer } from './components/TopCustomersCard';
 import PaymentMethodsCard from './components/PaymentMethodsCard';
+import ChurnRiskCard from './components/ChurnRiskCard';
 import { DollarSign, Clock, CheckCircle2, Users, TrendingUp, ArrowUpRight, FileText, Eye, MailCheck, Inbox, Plus, Calendar, CalendarDays, CalendarRange, Receipt } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -71,7 +73,17 @@ export default async function DashboardPage() {
   }
   const { workspaceId, workspace, user } = ctx.context;
 
-  const [stats, recentInvoices, monthlyRevenue, clients, viewStats, onboardingState, topCustomers, txStats] = await Promise.all([
+  const [
+    stats,
+    recentInvoices,
+    monthlyRevenue,
+    clients,
+    viewStats,
+    onboardingState,
+    topCustomers,
+    txStats,
+    churnRisk,
+  ] = await Promise.all([
     getDashboardStats(workspaceId),
     getRecentInvoices(workspaceId, 8),
     getMonthlyRevenue(workspaceId),
@@ -80,6 +92,7 @@ export default async function DashboardPage() {
     getOnboardingState(workspaceId),
     getTopCustomers(workspaceId),
     getTransactionStats(workspaceId),
+    getChurnRiskScores(workspaceId),
   ]);
 
   const openedPct = viewStats.openRate;
@@ -234,7 +247,7 @@ export default async function DashboardPage() {
             return (
               <div
                 key={chip.label}
-                className={`relative overflow-hidden rounded-2xl p-3.5 border bg-gradient-to-br ${chip.accent} animate-stagger stagger-${i + 1} stat-card-hover hover-lift`}
+                className={`relative overflow-hidden rounded-2xl p-3.5 border bg-gradient-to-br ${chip.accent} animate-stagger stagger-${i + 1} stat-card-hover hover-lift gradient-border-glow`}
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
@@ -557,6 +570,11 @@ export default async function DashboardPage() {
             breakdown={txStats.byGateway}
             totalVolume={txStats.totalVolume}
           />
+        </div>
+
+        {/* Churn Risk — full-width widget (Phase 7-E) */}
+        <div className="mt-6 animate-fadeIn">
+          <ChurnRiskCard atRisk={churnRisk.atRisk} summary={churnRisk.summary} />
         </div>
       </div>
     </section>

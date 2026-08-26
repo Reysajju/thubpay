@@ -40,6 +40,31 @@ async function runRecompute(req: NextRequest) {
   try {
     // Optionally scope to a single workspace via ?workspaceId=ws_x
     const workspaceId = req.nextUrl.searchParams.get('workspaceId');
+
+    // Phase 7 #32: Optional ?batchSize= query param to tune the
+    // db.$transaction([...]) chunk size inside recomputeClientSpendColumns.
+    // Default 50. Validated to 1-500 (500 is the SQLite safe upper bound
+    // for array-form transactions — each client.update uses ~3 params and
+    // SQLite's per-query parameter limit is 999, so ~333 is the hard cap;
+    // 500 leaves headroom for future field additions per update).
+    const batchSizeRaw = req.nextUrl.searchParams.get('batchSize');
+    let batchSize = 50;
+    if (batchSizeRaw !== null) {
+      const parsed = Number(batchSizeRaw);
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 500) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Invalid batchSize — must be an integer between 1 and 500',
+            ranAt: new Date().toISOString(),
+            durationMs: Date.now() - startedAt,
+          },
+          { status: 400 }
+        );
+      }
+      batchSize = parsed;
+    }
+
     let workspaces: { id: string; name: string }[] = [];
     if (workspaceId) {
       const w = await db.workspace.findUnique({
@@ -65,7 +90,7 @@ async function runRecompute(req: NextRequest) {
     for (const w of workspaces) {
       const wsStart = Date.now();
       try {
-        const r = await recomputeClientSpendColumns(w.id);
+        const r = await recomputeClientSpendColumns(w.id, batchSize);
         results.push({
           workspaceId: w.id,
           workspaceName: w.name,

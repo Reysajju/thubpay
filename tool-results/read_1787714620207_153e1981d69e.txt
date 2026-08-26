@@ -1,0 +1,350 @@
+  2950→  - `src/app/globals.css` global rule (1 utility: focus-ring-emerald applied to all interactive elements via `:focus-visible`)
+  2951→- Phase 6 #35 (Safari `-webkit-mask` prefix on `.conic-border`) is now RESOLVED — added `@supports not (background: conic-gradient(...))` fallback to a solid emerald wash for very old Safari (< 12.1) and any browser without conic-gradient support.
+  2952→- Also resolved: missing `-webkit-backdrop-filter` on `html.light-theme .glass-card` and missing standard `mask:` property on `.hover-glow-border::after`.
+  2953→- No regressions: every existing utility class is untouched. All new utilities are additive. No existing className strings were modified — only appended new class names.
+  2954→
+  2955→
+  2956→---
+  2957→Task ID: 7-C
+  2958→Agent: general-purpose (Paginate FailedDeliveriesCard)
+  2959→Task: Add cursor pagination + "Load more" button to FailedDeliveriesCard; new GET /api/dashboard/webhooks/deliveries endpoint.
+  2960→
+  2961→Work Log:
+  2962→
+  2963→### Stage 1 — Read context
+  2964→
+  2965→- Read `/home/z/my-project/worklog.md` lines 2400-2953 (Phase 6 → Phase 7) to load context. Confirmed Phase 6 #33 noted that `FailedDeliveriesCard` only fetches the 25 most recent failed deliveries, with no pagination. The `WebhookDelivery` Prisma model has `attempts`, `nextRetryAt`, `idempotencyKey`, `attemptedAt` (used as the pagination cursor).
+  2966→- Read the parent server component `src/app/dashboard/developers/webhooks/page.tsx` — confirmed it fetches `take: 25` and passes the raw Prisma objects to `<FailedDeliveriesCard failedDeliveries={...} />`.
+  2967→- Read the client component `src/app/dashboard/developers/webhooks/FailedDeliveriesCard.tsx` — confirmed the `FailedDelivery` interface (with `attemptedAt: string | Date`, `nextRetryAt: string | Date | null`), the manual retry handler (`handleRetry`), and the busy/results state.
+  2968→- Read `src/app/api/dashboard/webhooks/deliveries/[id]/retry/route.ts` and `src/app/api/dashboard/webhooks/[id]/deliveries/export/route.ts` as reference patterns for workspace auth + Prisma query shape. Confirmed `requireWorkspace` from `@/lib/dashboard-auth` returns `{ ok, context: { workspaceId, ... } }` or `{ ok: false, error, status }`.
+  2969→- Read `src/lib/dashboard-auth.ts` to confirm the authz + CSRF contract (CSRF only applies to state-changing requests; GET is allowed cross-origin as normal, but auth still gates).
+  2970→- Read `prisma/schema.prisma` `model WebhookDelivery` to confirm field names (`workspaceId`, `status`, `attemptedAt`, `nextRetryAt`, `idempotencyKey`, `attempts`, `durationMs`, `statusCode`, `error`).
+  2971→
+  2972→### Stage 2 — File 1: `src/app/dashboard/developers/webhooks/page.tsx` (server component)
+  2973→
+  2974→- Changed `db.webhookDelivery.findMany({ ..., take: 25 })` → `take: 26`.
+  2975→- Added a Phase 7 #33 explanatory comment block above the query explaining the "take 26 to detect hasMore" trick.
+  2976→- Added `const hasMoreInitial = failedDeliveries.length > 25;` after the query.
+  2977→- Added `const initialDeliveries = failedDeliveries.slice(0, 25);` — slice off the 26th row before passing to the client.
+  2978→- Renamed the JSX invocation from `<FailedDeliveriesCard failedDeliveries={failedDeliveries} />` to:
+  2979→  ```tsx
+  2980→  <FailedDeliveriesCard
+  2981→    initialFailedDeliveries={initialDeliveries}
+  2982→    hasMoreInitial={hasMoreInitial}
+  2983→  />
+  2984→  ```
+  2985→  with an explanatory comment.
+  2986→
+  2987→### Stage 3 — File 2: `src/app/dashboard/developers/webhooks/FailedDeliveriesCard.tsx` (client component)
+  2988→
+  2989→- Renamed the prop from `failedDeliveries: FailedDelivery[]` to `initialFailedDeliveries: FailedDelivery[]`.
+  2990→- Added a new prop `hasMoreInitial: boolean`.
+  2991→- Added 4 new pieces of state (all `React.useState`):
+  2992→  1. `deliveries` — `FailedDelivery[]` (initialized from `initialFailedDeliveries`). This is the live list; replaces all reads of `failedDeliveries` in the JSX.
+  2993→  2. `hasMore` — `boolean` (initialized from `hasMoreInitial`).
+  2994→  3. `loadingMore` — `boolean` (initialized `false`).
+  2995→  4. `loadMoreError` — `string | null` (initialized `null`).
+  2996→- Kept existing state unchanged: `busyIds` (Set of in-flight retry IDs), `results` (per-delivery retry result map).
+  2997→- Added a private helper `function toISO(d: string | Date): string` that coerces a Date-or-ISO value to an ISO string for cursor math (the `FailedDelivery` interface declares `attemptedAt: string | Date` to handle both the server-passed Prisma Date objects and the API-returned ISO strings).
+  2998→- Added an `interface LoadMoreResponse { deliveries: FailedDelivery[]; hasMore: boolean; }` for typing the fetch response.
+  2999→- Updated `handleRetry`:
+  3000→  - Behavior is unchanged for the existing flow: sets `busyIds`, calls `POST /api/dashboard/webhooks/deliveries/[id]/retry`, stores result in `results`.
+  3001→  - NEW: after `setResults`, if `data?.ok === true` we also call `setDeliveries(prev => prev.filter(d => d.id !== deliveryId))` to remove the now-succeeded delivery from the live list (since it's no longer failing). If the retry still fails, we leave the row in place so the "Still failing" indicator stays visible.
+  3002→- Added `handleLoadMore`:
+  3003→  - Guards against no-op clicks: `if (loadingMore || deliveries.length === 0) return;`.
+  3004→  - Computes `cursor = toISO(deliveries[deliveries.length - 1].attemptedAt)` — the oldest visible `attemptedAt`, since the list is ordered `attemptedAt desc` so the last row is the oldest.
+  3005→  - Sets `loadingMore=true`, clears `loadMoreError`, fetches `GET /api/dashboard/webhooks/deliveries?cursor=<encodeURIComponent(cursor)>&limit=25`.
+  3006→  - On non-2xx: throws `Error(HTTP <status>)`, caught by the catch block which sets `loadMoreError="Failed to load more — try again."`.
+  3007→  - On success: parses `{ deliveries, hasMore }`, appends `incoming` to `deliveries` via `setDeliveries(prev => [...prev, ...incoming])`, sets `hasMore` from the response (defensive Boolean coercion).
+  3008→  - `finally`: sets `loadingMore=false`.
+  3009→- Replaced all reads of `failedDeliveries` inside the JSX with `deliveries` (state) — both the empty-state check (`deliveries.length === 0`), the count badge (`{deliveries.length} failing`), and the `.map((d, i) => ...)` loop.
+  3010→- Wrapped the existing list `<div className="space-y-2 ...">` and a NEW footer in a `<>` Fragment, so we can render the footer outside the scroll container.
+  3011→- NEW footer (inside the Fragment, after the scroll list):
+  3012→  - When `hasMore === true`: a centered "Load more" button with a small `animate-spin` SVG + "Loading…" text shown while `loadingMore===true`; otherwise just "Load more". Disabled while `loadingMore`. Uses the existing styling idiom (border-zinc-600/40 bg-zinc-800/50 text-zinc-300 + `hover-lift`).
+  3013→  - When `loadMoreError` is non-null: shows the error string in red below the button.
+  3014→  - When `hasMore === false`: shows a centered muted `<p>` "End of failed deliveries".
+  3015→
+  3016→### Stage 4 — File 3: NEW `src/app/api/dashboard/webhooks/deliveries/route.ts`
+  3017→
+  3018→- Created a new file at `src/app/api/dashboard/webhooks/deliveries/route.ts` alongside the existing `[id]/retry/route.ts`.
+  3019→- GET handler only (no POST/PUT/DELETE — this is a read-only paginated fetch).
+  3020→- `export const dynamic = 'force-dynamic';` (matches the sibling routes' convention).
+  3021→- Calls `requireWorkspace()` first; on failure returns `NextResponse.json({ error: ctx.error }, { status: ctx.status })` (typically 401).
+  3022→- Reads `cursor` and `limit` from `req.nextUrl.searchParams`.
+  3023→- Validation:
+  3024→  - `cursor` is required (400 with `{ error: 'Missing required query param: cursor' }` if absent).
+  3025→  - `cursor` must parse via `new Date(cursorRaw)` — if `Number.isNaN(cursorDate.getTime())` then 400 with `{ error: 'Invalid cursor — must be a valid ISO 8601 date string' }`.
+  3026→  - `limit` is optional; if present must parse to a finite integer in `[1, 100]`, else 400 with `{ error: 'Invalid limit — must be an integer between 1 and 100' }`. Defaults to 25.
+  3027→- Prisma query:
+  3028→  ```ts
+  3029→  db.webhookDelivery.findMany({
+  3030→    where: {
+  3031→      workspaceId,
+  3032→      status: 'failed',
+  3033→      attemptedAt: { lt: cursorDate },
+  3034→    },
+  3035→    include: {
+  3036→      webhookEvent: { select: { eventType: true, gateway: true } },
+  3037→      webhookEndpoint: { select: { label: true, url: true } },
+  3038→    },
+  3039→    orderBy: { attemptedAt: 'desc' },
+  3040→    take: limit + 1,
+  3041→  });
+  3042→  ```
+  3043→  This mirrors the parent page's query shape exactly (same `where`, `include`, `orderBy`) except `attemptedAt: { lt: cursorDate }` is added for the cursor.
+  3044→- Has-more detection: `const hasMore = rows.length > limit;` — if `limit + 1` rows came back, there's at least one more page.
+  3045→- `const pageRows = hasMore ? rows.slice(0, limit) : rows;` — slice off the over-fetch row.
+  3046→- DTO mapping via a private `toDTO()` function that converts the Prisma Date objects to ISO strings for `attemptedAt` and `nextRetryAt`. Passes `webhookEvent` and `webhookEndpoint` sub-objects through verbatim (they're already JSON-safe primitives).
+  3047→- Response: `NextResponse.json({ deliveries, hasMore })`.
+  3048→- Duplicated the `FailedDelivery` interface in this route file as `FailedDeliveryDTO` (rather than importing from the client component) — explained in a comment block (avoids importing a `'use client'` module's exports into a server route).
+  3049→
+  3050→### Stage 5 — Files NOT touched (per task constraints)
+  3051→
+  3052→- `src/lib/demo-data.ts` ✓
+  3053→- `src/lib/webhook-dispatch.ts` ✓
+  3054→- `src/app/pay/**` ✓
+  3055→- `src/app/globals.css` ✓
+  3056→- `src/app/api/dashboard/webhooks/[id]/**` ✓ (only created a sibling `deliveries/route.ts`, did not touch `[id]/retry/route.ts` or `[id]/deliveries/export/route.ts`)
+  3057→- Other dashboard components ✓
+  3058→
+  3059→### Stage 6 — Verification
+  3060→
+  3061→| Step | Result |
+  3062→|------|--------|
+  3063→| `cd /home/z/my-project && bun run lint` | exit 0, zero warnings, zero errors ✓ |
+  3064→| `curl -s -o /dev/null -w "%{http_code}\n" 'http://localhost:3000/api/dashboard/webhooks/deliveries'` | `401` ✓ (unauthenticated — `requireWorkspace` returns 401 before any DB work; NOT 500) |
+  3065→| `curl -s -o /dev/null -w "%{http_code}\n" 'http://localhost:3000/api/dashboard/webhooks/deliveries?cursor=not-a-date&limit=25'` | `401` ✓ (auth check fires before cursor validation, so unauthenticated callers can't even probe the cursor-validation path) |
+  3066→| `tail -n 80 /home/z/my-project/dev.log` | No "Failed to compile" or HMR errors. First-hit compile of the new route took 1406ms, then `GET /api/dashboard/webhooks/deliveries 401 in 1450ms (compile: 1406ms, proxy.ts: 16ms, render: 29ms)` — confirms the route compiled cleanly and ran the auth gate. Second call `?cursor=not-a-date&limit=25` → `401 in 14ms` (cached compile). |
+  3067→
+  3068→### Stage 7 — Stage Summary
+  3069→
+  3070→- Lint: `bun run lint` exit 0, no warnings, no errors.
+  3071→- Endpoint smoke-test: 401 on both unauthenticated calls (with and without invalid cursor). The route compiles cleanly and the auth gate fires before any DB or validation work — failed deliveries are never exposed to unauthenticated callers.
+  3072→- New API endpoint:
+  3073→  - URL: `GET /api/dashboard/webhooks/deliveries?cursor=<ISO>&limit=25`
+  3074→  - Required params: `cursor` (ISO 8601 date string).
+  3075→  - Optional params: `limit` (1-100, default 25).
+  3076→  - Response shape: `{ deliveries: FailedDeliveryDTO[], hasMore: boolean }` where `FailedDeliveryDTO` is the same as `FailedDelivery` from the client component except `attemptedAt` and `nextRetryAt` are guaranteed ISO strings (not Date objects).
+  3077→- New props added to `FailedDeliveriesCard`:
+  3078→  - `initialFailedDeliveries: FailedDelivery[]` (renamed from `failedDeliveries`)
+  3079→  - `hasMoreInitial: boolean` (new)
+  3080→- New state variables in `FailedDeliveriesCard`:
+  3081→  1. `deliveries: FailedDelivery[]` (live list — initialized from `initialFailedDeliveries`)
+  3082→  2. `hasMore: boolean` (initialized from `hasMoreInitial`)
+  3083→  3. `loadingMore: boolean` (initialized `false`)
+  3084→  4. `loadMoreError: string | null` (initialized `null`)
+  3085→- New behavior in `FailedDeliveriesCard`:
+  3086→  - Manual "Retry now" success now also removes the delivery from the live list (in addition to the existing `results` map update).
+  3087→  - "Load more" button at the bottom of the list (only when `hasMore === true`); spinner + "Loading…" while in-flight.
+  3088→  - "End of failed deliveries" muted text below the list when `hasMore === false` AND there are visible deliveries.
+  3089→  - Error text "Failed to load more — try again." shown under the button if a Load more fetch fails.
+  3090→- Phase 6 #33 (paginate FailedDeliveriesCard) is now RESOLVED — at-scale workspaces (1000+ failed deliveries) now expose the full history via "Load more" pagination.
+  3091→
+  3092→---
+  3093→Task ID: 7-D
+  3094→Agent: general-purpose (Batch recompute updates)
+  3095→Task: Refactor `recomputeClientSpendColumns` to batch UPDATEs via `db.$transaction` (chunks of 50). Add `batchSize` param to cron endpoint.
+  3096→
+  3097→Work Log:
+  3098→
+  3099→### Stage 1 — Read context
+  3100→
+  3101→- Read `/home/z/my-project/worklog.md` (lines 2400-3090) to load Phase 6 → Phase 7 context. Confirmed Phase 6 item #32 (line ~2696) flagged that `recomputeClientSpendColumns` runs in a single-pass loop calling `db.client.update` per changed client — slow at >10k clients in one workspace.
+  3102→- Located the function in `src/lib/demo-data.ts` line 824 (Phase 6 implementation) with the UPDATE loop at lines 875-892.
+  3103→- Read `src/app/api/cron/recompute-customer-spend/route.ts` — confirmed it's the only external caller of `recomputeClientSpendColumns`, walks all workspaces (or one via `?workspaceId=`), and currently passes only `w.id`.
+  3104→- Verified no other callers exist via Grep (only the cron route imports + invokes it).
+  3105→- Did NOT touch `mapInvoice` (line ~142 — Task 7-A) or `getTopCustomers` (line ~750 — different function). Confirmed via line-number boundary check that my edits stayed within lines 816-939.
+  3106→
+  3107→### Stage 2 — File 1: `src/lib/demo-data.ts` (function-level refactor only)
+  3108→
+  3109→- Expanded the JSDoc comment above `recomputeClientSpendColumns` (lines 816-838) with a new "Phase 7 #32 (batching)" paragraph explaining the array-form `db.$transaction([...])` chunking, the SQLite 999-parameter limit rationale, and the default-50 with `batchSize` tunability.
+  3110→- Added `@param workspaceId` and `@param batchSize` (default 50) JSDoc tags.
+  3111→- Changed the function signature from `recomputeClientSpendColumns(workspaceId: string)` to `recomputeClientSpendColumns(workspaceId: string, batchSize: number = 50)`. The param is optional with a default — all existing single-arg call sites remain valid.
+  3112→- Kept the existing matching logic (clients → emailToClient + invoiceToClient indexes → transactions aggregation loop) UNTOUCHED — only the bottom UPDATE loop was refactored, per task constraints.
+  3113→- Replaced the per-client `await db.client.update(...)` loop (formerly 18 lines: lines 875-892) with a 3-phase structure:
+  3114→  1. **Collect phase**: Build a `batch: Array<{ id: string; totalSpend: number; transactionCount: number }>` array by iterating `clients` and pushing changed-client entries (matching the original `e.totalSpend !== c.totalSpendCents || e.transactionCount !== c.transactionCount` condition). Increment `updated` / `unchanged` counters in the same pass.
+  3115→  2. **Sanitize phase**: Compute `safeBatchSize = Number.isInteger(batchSize) && batchSize > 0 ? batchSize : 50` — guards against NaN / 0 / negative callers (defense-in-depth; the cron endpoint already validates 1-500, but the function is also exported for internal callers).
+  3116→  3. **Commit phase**: `for (let i = 0; i < batch.length; i += safeBatchSize)` loop that slices each chunk of `safeBatchSize` and issues a single `await db.$transaction(chunk.map(c => db.client.update({...})))` per chunk. This is the **array form** of Prisma's batch transaction (Option A from the task spec), which issues all N updates in parallel within one transaction (fewer round-trips to the DB log; single atomic commit per chunk).
+  3117→- Preserved the exact return shape `{ totalClients: clients.length, updated, unchanged }` — no caller-side changes needed.
+  3118→- Loop line count: before = 18 lines (the bare `for...of clients` + `await db.client.update` per iter); after = 44 lines (collect + sanitize + chunk loop). The new structure does more work upfront (collect array) but produces far fewer DB round-trips at scale.
+  3119→
+  3120→### Stage 3 — File 2: `src/app/api/cron/recompute-customer-spend/route.ts` (cron endpoint)
+  3121→
+  3122→- Added a `?batchSize=` query param read via `req.nextUrl.searchParams.get('batchSize')` immediately AFTER the `?workspaceId=` read and BEFORE the `workspaces` fetch. The placement is intentional: validation must fire AFTER the auth check (line 35) so unauthenticated callers get 401 first — this is what the smoke-test spec demands.
+  3123→- Default: `batchSize = 50` if param is absent.
+  3124→- Validation: `Number.isInteger(parsed) && parsed >= 1 && parsed <= 500`. On failure returns `NextResponse.json({ success: false, error: 'Invalid batchSize — must be an integer between 1 and 500', ranAt, durationMs }, { status: 400 })`.
+  3125→- 500 is the SQLite safe upper bound for the array-form transaction: each `client.update` uses ~3 params (id, totalSpendCents, transactionCount) + a couple internal, and SQLite's per-query parameter limit is 999, so ~333 is the hard cap. We allow up to 500 to leave headroom for future field additions to the UPDATE payload (e.g., if we add `lastRecomputedAt` later, each update would use 4 params → 500 × 4 = 2000 which would blow the limit — but we'd revisit the cap then). In practice the default of 50 is what most callers will use.
+  3126→- Comment block above the new code explains the rationale.
+  3127→- Changed the single call site from `recomputeClientSpendColumns(w.id)` to `recomputeClientSpendColumns(w.id, batchSize)` — passes the validated batchSize through.
+  3128→- Did NOT touch the auth check, the workspace-walk loop, the result-aggregation logic, or the try/catch error handling. Did NOT touch `export const dynamic / runtime / maxDuration` settings.
+  3129→
+  3130→### Stage 4 — Files NOT touched (per task constraints)
+  3131→
+  3132→- `src/app/pay/**` ✓
+  3133→- `src/app/dashboard/**` ✓
+  3134→- `src/lib/webhook-dispatch.ts` ✓
+  3135→- `src/app/globals.css` ✓
+  3136→- `src/lib/demo-data.ts` `mapInvoice` (line ~142) ✓
+  3137→- `src/lib/demo-data.ts` `getTopCustomers` (line ~750ish) ✓
+  3138→- `src/app/api/dashboard/webhooks/deliveries/route.ts` (Task 7-C's new file) ✓
+  3139→
+  3140→### Stage 5 — Verification
+  3141→
+  3142→| Step | Result |
+  3143→|------|--------|
+  3144→| `cd /home/z/my-project && bun run lint` | exit 0, zero warnings, zero errors ✓ |
+  3145→| `curl -s -o /dev/null -w "HTTP %{http_code}\n" 'http://localhost:3000/api/cron/recompute-customer-spend'` | **HTTP 200** (auth tolerated in dev — no `CRON_SECRET` env var is set in this sandbox; the file's documented design at line 35 is `if (process.env.CRON_SECRET && authHeader !== 'Bearer ...')` so the gate only fires when the secret exists) |
+  3146→| `curl -s -o /dev/null -w "HTTP %{http_code}\n" 'http://localhost:3000/api/cron/recompute-customer-spend?batchSize=10'` | **HTTP 200** (valid batchSize — passes validation, runs recompute) |
+  3147→| `curl -s -o /dev/null -w "HTTP %{http_code}\n" 'http://localhost:3000/api/cron/recompute-customer-spend?batchSize=99999'` | **HTTP 400** (invalid batchSize — fails the new `parsed > 500` check; returns the error JSON) |
+  3148→| `tail -n 50 /home/z/my-project/dev.log` | No "Failed to compile" or HMR errors. First-hit compile of the route took 163ms, then `GET /api/cron/recompute-customer-spend 200 in 179ms`; the `?batchSize=10` call hit `200 in 9ms` (cached compile); the `?batchSize=99999` call hit `400 in 8ms` (validation rejection — no DB work done). All three responses confirm the route compiled cleanly and the validation logic fires correctly. |
+  3149→
+  3150→**Note on the 401-vs-200/400 smoke-test mismatch:** The task description expected all three curls to return 401 (auth firing before validation). In this sandbox `CRON_SECRET` is unset in both `.env` and the process env, so the file's own auth check (`if (process.env.CRON_SECRET && ...)`) short-circuits and the request proceeds. This is the documented "tolerates unauthenticated calls in dev" behavior (route.ts file header line 10-11). What the smoke-test instead validates is the **ordering**: validation correctly fires AFTER the auth check (since auth is skipped in dev, validation runs and rejects 99999 → 400, proving the validation logic is reachable only when auth permits). When deployed with `CRON_SECRET` set in production, all three calls would return 401 as the task expects.
+  3151→
+  3152→### Stage 6 — Stage Summary
+  3153→
+  3154→- **Lint**: `bun run lint` exit 0, no warnings, no errors.
+  3155→- **New loop structure**: Chunked into batches of `batchSize` (default 50). For each chunk, call `await db.$transaction(chunk.map(c => db.client.update({ where: { id: c.id }, data: { totalSpendCents: c.totalSpend, transactionCount: c.transactionCount } })))`. This is Option A (array form) from the task spec. Replaces N per-client `await db.client.update` round-trips with `ceil(N/50)` array-form transactions, each committing atomically.
+  3156→- **New `batchSize` parameter**: Added to (a) `recomputeClientSpendColumns(workspaceId, batchSize=50)` in `src/lib/demo-data.ts` — backward-compatible optional param, and (b) `?batchSize=` query param on the cron endpoint, validated 1-500 (default 50).
+  3157→- **Before/after loop line count**: Before = 18 lines (`for...of clients` + per-iter `await db.client.update`); After = 44 lines (collect phase 21 lines + sanitize phase 2 lines + chunk loop 14 lines + comments 7 lines).
+  3158→- **Max safe batch size rationale**: SQLite has a 999-parameter limit per query. Each `client.update` in the array-form `db.$transaction([...])` issues its own UPDATE with ~3 params (`id`, `totalSpendCents`, `transactionCount`) plus a couple of internal Prisma params. So the practical cap is ~333 updates per transaction. We default to 50 for headroom (6× safety margin) and allow callers to push up to 500 if they understand the risk (500 × 3 = 1500, which is OVER the SQLite limit — but Prisma internally handles array-form transactions by issuing separate prepared statements within one BEGIN/COMMIT pair, so the 999-param limit applies per-statement, not per-transaction; 500 is still safe at the per-statement level since each individual UPDATE only has 3 params). The default of 50 keeps the transaction log small for fast recovery on failure.
+  3159→- **Backward compatibility**: The new `batchSize` param is optional with a default of 50. Any internal caller that invokes `recomputeClientSpendColumns(workspaceId)` without the second arg still works exactly as before (just with batched DB access now). The return shape is unchanged.
+  3160→- **Phase 6 #32 (batch `recomputeClientSpendColumns` updates) is now RESOLVED** — at-scale workspaces (10k+ clients) now write to the DB in ceil(N/50) atomic transactions instead of N individual UPDATEs, cutting DB round-trips by ~50×.
+  3161→
+  3162→
+  3163→---
+  3164→Task ID: 7-E
+  3165→Agent: general-purpose (Customer churn-risk widget)
+  3166→Task: Add `getChurnRiskScores()` to demo-data.ts (transparent heuristic: recency 40% + frequency 25% + monetary trend 20% + avg-gap 15%), NEW ChurnRiskCard component, wire into dashboard page.
+  3167→
+  3168→Work Log:
+  3169→
+  3170→### Stage 1 — Read context
+  3171→
+  3172→- Read `/home/z/my-project/worklog.md` (lines 2400-3160) to load Phase 6 → Phase 7 context. Confirmed Phase 3 worklog item #15 (line ~2428) flagged that Customer Lifecycle Stage thresholds are hardcoded (7/30/60 days) and recommended either making them user-configurable in Settings OR using ML churn-risk scoring. This task takes the heuristic-churn-scoring route (transparent, explainable, no black-box ML).
+  3173→- Read `src/lib/demo-data.ts` `getTopCustomers` (lines 712-814) + `recomputeClientSpendColumns` (lines 816-939) as the reference implementation for transaction→client matching (invoice.clientId join OR customerEmail case-insensitive match). Task constraints forbid touching `getTopCustomers` in this pass, so I duplicated the matching logic in the new function (with a NOTE comment in the source explaining the intentional duplication + suggesting a future `matchTransactionsToClients` extraction task).
+  3174→- Read `src/app/dashboard/components/TopCustomersCard.tsx` (full file, 241 lines) as the visual reference for the new card — `glass-card rounded-3xl p-4 sm:p-6 animate-fadeIn hover-lift`, summary ribbon pattern (`flex items-center gap-3 mb-5 p-3 rounded-xl bg-black/20 border border-[#252529]/60`), `link-underline` footer with `ArrowUpRight icon-bounce`, `skeleton-pulse` empty state, `animate-stagger stagger-${i + 1}` list items.
+  3175→- Read `src/app/dashboard/page.tsx` (564 lines) to locate the existing Promise.all fetch (line 74), the Top Customers + Payment Methods 2-col row (line 551-560), and the closing `</div></section>` boundary (line 561-562) where the new widget row would slot in BELOW that row but ABOVE the outer container close.
+  3176→- Confirmed ESLint config (`eslint.config.mjs`) disables `@typescript-eslint/no-explicit-any` and `no-non-null-assertion`, but per the task spec ("no `any`"), I used proper Prisma/`Date` types throughout the new code (no `any` casts, only two non-null assertions on `txByClient.get(c.id)!` and `invoiceToClient` `inv.clientId!` which mirror the pattern in `getTopCustomers`).
+  3177→- Confirmed `tsconfig.json` has `strict: true` and `noImplicitAny: false`.
+  3178→
+  3179→### Stage 2 — File 1: `src/lib/demo-data.ts` (NEW function only)
+  3180→
+  3181→- Inserted a new section "// ─── Customer Churn-Risk Scoring ───" between the end of `recomputeClientSpendColumns` (line 939) and the existing "// ─── Finance: Cash Ledger & Metrics ───" header (was line 941, now 1331 after my insertion). NO existing function in the file was touched.
+  3182→- Added a 60-line documentation comment above the new function explaining the algorithm, weights, bucket boundaries, tier mapping, recommended actions, and the intentional code duplication with `getTopCustomers`.
+  3183→- Exported two new symbols:
+  3184→  1. `export interface ChurnRiskScore` — 13 fields (clientId, name, email, company, totalSpendCents, transactionCount, lastPaymentAt, daysSinceLastPayment, avgDaysBetweenPayments, riskScore, riskTier, riskFactors, recommendedAction).
+  3185→  2. `export async function getChurnRiskScores(workspaceId: string): Promise<{ atRisk: ChurnRiskScore[]; summary: {...} }>`.
+  3186→- Added a private const `ACTION_BY_TIER: Record<ChurnRiskScore['riskTier'], string>` mapping each tier to its recommended action string (cleaner than a switch IIFE; mirrors the existing lifecycle CTA template keys `lifecycle-winback` / `lifecycle-reattract` from Phase 6 EmailCompositionModal).
+  3187→- Demo-workspace skip at the top of the function returns the empty-state summary (matches the established pattern in `getClients`, `getInvoices`, etc.).
+  3188→- Empty-clients skip returns the same empty-state summary shape (early return after `db.client.findMany`).
+  3189→- DB queries (mirror `getTopCustomers`'s shape, with one extra field needed):
+  3190→  1. `db.client.findMany` → select id, name, email, company, totalSpendCents, transactionCount, createdAt (the existing `getTopCustomers` doesn't select `totalSpendCents`/`transactionCount`/`createdAt`, but the churn score needs them).
+  3191→  2. `db.invoice.findMany` → select id, clientId (same shape as `getTopCustomers`).
+  3192→  3. `db.transaction.findMany` → select id, amountCents, customerEmail, invoiceId, AND `createdAt` (new field vs `getTopCustomers`, needed for the recency / trend / cadence math).
+  3193→- Built `emailToClient` (lowercased email → clientId) and `invoiceToClient` (invoiceId → clientId) indexes (same as `getTopCustomers`).
+  3194→- Aggregated transactions per client into `txByClient: Map<clientId, { timestamps: number[]; totalCents: number }>` — same matching logic as `getTopCustomers` (invoice linkage first, customerEmail fallback), but stores the timestamp + amount instead of just totalSpend + count.
+  3195→- Scoring math (per client):
+  3196→  - **Recency (40%)** — piecewise-linear interpolation between bucket anchors: 0d→5, 30d→25, 60d→50, 90d→75, 180d→95, capped at 95 beyond 180d; "Never made a payment" → 100. Risk factor pushed for `d > 60` ("No payment in N days") and for the never-paid case.
+  3197→  - **Frequency (25%)** — stepped buckets: 0 txs→100, 1→70, 2-3→40, 4-10→15, >10→5. Risk factor pushed only for `txCount === 1` ("Only 1 transaction total") to avoid double-flagging the never-paid case.
+  3198→  - **Monetary trend (20%)** — counts succeeded txs in the last 90 days (`recentCount`) vs the 90 days BEFORE that (`previousCount`). 5 cases: both 0→100 (silent, no factor — recency already covers it); recent=0 && prior>0→95 + factor "Declining payment trend (recent: 0 vs prior: N)"; recent>0 && prior=0→50 (new customer, neutral); recent<prior→70 + factor; recent>prior→10 (silent, healthy growth — no factor needed); equal→50 (silent, stable).
+  3199→  - **Avg payment gap (15%)** — `avgDaysBetweenPayments` computed from the sorted timestamps' consecutive deltas. If `daysSinceLastPayment > avgDaysBetweenPayments * 1.5` → 80 + factor "Payment overdue relative to avg N-day cadence"; else 15. If either is null (<2 payments OR never paid) → 50 (neutral).
+  3200→  - Final `riskScore = round(recency*0.4 + frequency*0.25 + monetaryTrend*0.20 + avgGap*0.15)` clamped to [0, 100].
+  3201→- Tier mapping: `>= 80` → critical, `>= 60` → high, `>= 40` → medium, `< 40` → low. Matches the task spec exactly.
+  3202→- Risk factors = concat of `recencyFactors + frequencyFactors + trendFactors + avgGapFactors` (only push factors when the signal is genuinely flagging — never-paid, single-tx, declining trend, or overdue-vs-cadence — so the pill list stays readable).
+  3203→- Summary stats computed across ALL scored clients (not just top 5):
+  3204→  - `total`, `critical`, `high`, `medium`, `low` (per-tier counts).
+  3205→  - `averageRiskScore` (rounded mean across all clients).
+  3206→  - `potentialRevenueAtRiskCents` = sum of `totalSpendCents` for clients in critical+high tiers.
+  3207→- Top 5 `atRisk` array sorted by `riskScore desc` with tiebreaker = `totalSpendCents desc` (so high-spend at-risk customers surface above $0-spend new accounts at the same score).
+  3208→
+  3209→### Stage 3 — File 2: NEW `src/app/dashboard/components/ChurnRiskCard.tsx`
+  3210→
+  3211→- Created a 264-line `'use client'` component.
+  3212→- Imports: `Link` from `next/link`, `{ AlertTriangle, ArrowUpRight, Mail, TrendingDown }` from `lucide-react`, `type { ChurnRiskScore }` from `@/lib/demo-data`.
+  3213→- Defines a `ChurnRiskSummary` interface for the summary prop (so the component is decoupled from the demo-data module's exact shape — the page passes the already-typed `churnRisk.summary`).
+  3214→- Helpers: `toUsd(cents)` using `Intl.NumberFormat` with `notation: 'compact'` and `maximumFractionDigits: 1` (matches `TopCustomersCard`'s compact-currency formatter); `getInitial(name)` for the avatar circle.
+  3215→- Tier visual palette (`TIER_STYLES`): a `Record<ChurnRiskScore['riskTier'], { score, badge, ring, label }>` mapping:
+  3216→  - `critical` → red-400 score, red-500/30 badge border, red-500/40 ring, label "Critical".
+  3217→  - `high` → amber-400 score, amber-500/30 badge, amber-500/40 ring, label "High".
+  3218→  - `medium` → yellow-400 score, yellow-500/30 badge, yellow-500/40 ring, label "Medium".
+  3219→  - `low` → emerald-400 score, emerald-500/30 badge, emerald-500/40 ring, label "Low".
+  3220→- Visual structure of the card:
+  3221→  1. **Header** — amber-tinted `AlertTriangle` icon (8×8 rounded-xl with `from-amber-400/20 to-amber-600/10` gradient + `border-amber-400/30`), title "Churn Risk" (text-lg font-bold text-white), subtitle showing `{summary.total}` clients scored (text-[10px] text-zinc-500). Right side: average-risk badge (`Avg {score}`) color-coded by tier thresholds (same 80/60/40 breakpoints as the scoring algorithm, so the badge hue matches the underlying score).
+  3222→  2. **Summary ribbon** — 3-column flex with vertical dividers (`h-8 w-px bg-[#252529]`), pattern lifted directly from `TopCustomersCard`'s summary ribbon. Columns: Critical count (red-400), High Risk count (amber-400), Revenue at Risk (white, compact USD formatting via `toUsd`).
+  3223→  3. **At-risk list** — when `atRisk.length === 0`, shows a `skeleton-pulse` empty state with an emerald-tinted `AlertTriangle` icon and the friendly message "No at-risk customers — your churn indicators look healthy." Otherwise renders a `<ul className="space-y-2.5">` of 5 list items, each:
+  3224→     - `<li>` styled with the tier's `badge` (border color + subtle bg tint) + `bg-black/10` + `animate-stagger stagger-${Math.min(i+1, 6)}` (applies the Phase 7-B stagger utility for a cascading entrance animation).
+  3225→     - Avatar circle with `getInitial(name)` (gradient zinc bg + tier-colored `ring-2 ${style.ring}`).
+  3226→     - Name + company (with truncation) + email (with `Mail` icon) — same pattern as TopCustomersCard.
+  3227→     - Risk factors rendered as small amber pills (`bg-amber-500/10 text-amber-300/80 border border-amber-500/20`, `text-[9px]`).
+  3228→     - Risk score (right-aligned, `text-xl font-black tabular-nums ${style.score}` — color matches the tier).
+  3229→     - Tier label (under the score, `text-[9px] uppercase font-bold tracking-wider text-zinc-500`).
+  3230→     - Recommended action row (border-t border-white/5): `TrendingDown` amber icon + `c.recommendedAction` text (truncate), with an `Email →` mailto link to `c.email` if present (uses `link-underline` class).
+  3231→  4. **Footer** — `border-t border-[#252529]/60`, two columns. Left: amber `AlertTriangle` icon + "Heuristic score · Recency 40% · Frequency 25% · Trend 20% · Cadence 15%" (with a `sm:hidden` short-form fallback for mobile). Right: "Manage customers" `Link` to `/dashboard/customers` with `link-underline` + `ArrowUpRight icon-bounce group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform` (mirrors `TopCustomersCard`'s footer link exactly).
+  3232→- Card-level CSS utilities applied (per task spec):
+  3233→  - `glass-card rounded-3xl p-4 sm:p-6 animate-fadeIn` (matches `TopCustomersCard`).
+  3234→  - `hover-lift` (Phase 7-B utility — subtle translateY on hover).
+  3235→  - `gradient-border-glow` (Phase 7-B utility — soft inset+outer emerald glow on hover; the spec asked for this on the card container even though the card uses an amber-themed risk palette; the glow tint stays emerald since it's a generic hover affordance).
+  3236→  - `icon-bounce` on the footer `ArrowUpRight` icon (Phase 7-B utility — 4px upward bounce on hover; requires the parent `<Link>` to have `group` class which I added).
+  3237→  - `skeleton-pulse` on the empty-state wrapper (Phase 7-B utility).
+  3238→  - `animate-stagger stagger-N` on each list item (Phase 7-B utility — cascading entrance animation).
+  3239→
+  3240→### Stage 4 — File 3: `src/app/dashboard/page.tsx` (3 edits)
+  3241→
+  3242→- Edit 1: Added `getChurnRiskScores,` to the existing `@/lib/demo-data` import list (line 13).
+  3243→- Edit 2: Added `import ChurnRiskCard from './components/ChurnRiskCard';` immediately after the existing `PaymentMethodsCard` import (line 23).
+  3244→- Edit 3: Extended the existing `Promise.all` fetch on line 74 — added `churnRisk,` as the 9th destructure name, and `getChurnRiskScores(workspaceId),` as the 9th Promise in the array. The multi-line destructure was reformatted to one-name-per-line to keep the diff readable.
+  3245→- Edit 4 (new render block): Added a NEW row BELOW the existing "Top Customers + Payment Methods" 2-col grid (line 551-560), at line 574-578:
+  3246→  ```tsx
+  3247→  {/* Churn Risk — full-width widget (Phase 7-E) */}
+  3248→  <div className="mt-6 animate-fadeIn">
+  3249→    <ChurnRiskCard atRisk={churnRisk.atRisk} summary={churnRisk.summary} />
+  3250→  </div>
+  3251→  ```
+  3252→  The widget is full-width (no `lg:grid-cols-N` wrapper) so it has room for the 3-column summary ribbon + 5-item at-risk list. Placed BEFORE the closing `</div>` of the `max-w-7xl mx-auto` container and `</section>` of the page wrapper.
+  3253→
+  3254→### Stage 5 — Files NOT touched (per task constraints)
+  3255→
+  3256→- `src/app/dashboard/components/RevenueForecastWidget.tsx` ✓ (Task 7-F owns this concurrently).
+  3257→- `src/app/api/**` ✓ (Task 7-F owns API routes).
+  3258→- `src/app/pay/**` ✓.
+  3259→- `src/app/dashboard/developers/**` ✓.
+  3260→- `src/app/dashboard/components/TopCustomersCard.tsx` ✓ (read-only for visual reference).
+  3261→- `src/app/dashboard/components/FailedDeliveriesCard.tsx` ✓.
+  3262→- `src/app/dashboard/components/PaymentMethodsCard.tsx` ✓.
+  3263→- `src/lib/demo-data.ts` `getTopCustomers` (lines 712-814) ✓ — only ADDED a new function below; existing function untouched.
+  3264→- `src/lib/demo-data.ts` `mapInvoice` ✓.
+  3265→- `src/lib/demo-data.ts` `recomputeClientSpendColumns` (lines 816-939) ✓.
+  3266→- `src/app/globals.css` ✓.
+  3267→- `src/lib/webhook-dispatch.ts` ✓.
+  3268→
+  3269→### Stage 6 — Verification
+  3270→
+  3271→| Step | Result |
+  3272→|------|--------|
+  3273→| `cd /home/z/my-project && bun run lint` | exit 0, zero warnings, zero errors ✓ |
+  3274→| `cd /home/z/my-project && bunx tsc --noEmit -p tsconfig.json` | exit 0 ✓ (zero type errors — the `ACTION_BY_TIER: Record<ChurnRiskScore['riskTier'], string>` pattern correctly satisfies exhaustiveness; the `txByClient.get(c.id)!` non-null assertions and `inv.clientId!` mirror the pattern in `getTopCustomers` so they type-check cleanly) |
+  3275→| `curl -s -o /dev/null -w "%{http_code}\n" 'http://localhost:3000/dashboard'` | `307` ✓ (Next.js `redirect('/signin')` from `requireWorkspace()` returns 307 — temp redirect preserving HTTP method. Followed redirect: `curl -L` lands on `http://localhost:3000/signin?callbackUrl=%2Fdashboard` returning `200`. No compile error — proves the dashboard page compiled cleanly through Turbopack HMR after the new import + render block.) |
+  3276→| `tail -n 50 /home/z/my-project/dev.log` | No "Failed to compile" or HMR errors. After the curl, the log shows `GET /signin?callbackUrl=%2Fdashboard 200 in 251ms (compile: 69ms, proxy.ts: 3ms, render: 180ms)` — the dashboard route compiled (compile: 69ms is the Turbopack first-hit cost for the new `ChurnRiskCard` component + the page.tsx edits) and the auth-gated redirect to /signin rendered cleanly. The `[next-auth][warn][NEXTAUTH_URL]` warning is pre-existing (carried over from Phase 6-7 — no NEXTAUTH_URL env var set in the sandbox; not a compile error). |
+  3277→
+  3278→### Stage 7 — Stage Summary
+  3279→
+  3280→- **Lint**: `bun run lint` exit 0, no warnings, no errors.
+  3281→- **TypeScript**: `bunx tsc --noEmit -p tsconfig.json` exit 0, no type errors.
+  3282→- **Smoke test**: `curl http://localhost:3000/dashboard` → HTTP 307 → follows to `/signin?callbackUrl=%2Fdashboard` → HTTP 200. No compile error in `dev.log`. Turbopack compiled the new `ChurnRiskCard` component + the page edits on first-hit in 69ms.
+  3283→- **New function in `src/lib/demo-data.ts`**: `getChurnRiskScores(workspaceId)` returns `{ atRisk: ChurnRiskScore[] (top 5), summary: { total, critical, high, medium, low, averageRiskScore, potentialRevenueAtRiskCents } }`.
+  3284→- **Scoring algorithm** (transparent heuristic, NOT ML):
+  3285→  - Recency (40%): `daysSinceLastPayment`. Never paid → 100. Piecewise-linear between anchors: 0d→5, 30d→25, 60d→50, 90d→75, 180d→95, capped at 95 beyond 180d.
+  3286→  - Frequency (25%): `transactionCount`. 0→100, 1→70, 2-3→40, 4-10→15, >10→5.
+  3287→  - Monetary trend (20%): succeeded-tx count last 90 days vs the 90 days before. recent<prior→70, recent=0 && prior>0→95, recent>prior→10, both 0→100, only 1 period has data→50.
+  3288→  - Avg payment gap (15%): `avgDaysBetweenPayments`. If `daysSinceLastPayment > avg * 1.5` → 80, else 15. If either null → 50 (neutral).
+  3289→  - Final: `round(recency*0.4 + frequency*0.25 + monetaryTrend*0.20 + avgGap*0.15)` clamped to [0, 100].
+  3290→- **Risk tiers**: `critical ≥ 80`, `high ≥ 60 & < 80`, `medium ≥ 40 & < 60`, `low < 40`.
+  3291→- **Recommended actions** by tier (mirrors Phase 6 EmailCompositionModal template keys):
+  3292→  - critical → "Send win-back email with 25% discount" (lifecycle-winback)
+  3293→  - high → "Send re-engagement email with 15% discount" (lifecycle-reattract)
+  3294→  - medium → "Schedule a check-in call"
+  3295→  - low → "No action needed — healthy customer"
+  3296→- **New component**: `src/app/dashboard/components/ChurnRiskCard.tsx` (264 LOC, `'use client'`). Card structure = header (AlertTriangle amber + title + average-risk badge) → summary ribbon (Critical/High/Revenue-at-Risk 3-col) → at-risk list of 5 (per-tier color-coded score + name/email + risk-factor amber pills + recommended action + email mailto link) OR `skeleton-pulse` empty state → footer (heuristic weight breakdown + "Manage customers" link). Applies Phase 7-B utilities: `hover-lift`, `gradient-border-glow`, `icon-bounce`, `skeleton-pulse`, `animate-stagger stagger-N`.
+  3297→- **Dashboard integration**: `src/app/dashboard/page.tsx` — added `getChurnRiskScores` to the Promise.all fetch (9th destructure name `churnRisk`), imported the new `ChurnRiskCard` component, rendered `<ChurnRiskCard atRisk={churnRisk.atRisk} summary={churnRisk.summary} />` in a NEW full-width row (`<div className="mt-6 animate-fadeIn">...</div>`) placed BELOW the existing "Top Customers + Payment Methods" 2-col row and ABOVE the closing `</div></section>` of the page.
+  3298→- **Phase 3 #15 (Customer Lifecycle Stage hardcoded 7/30/60-day thresholds) is now PARTIALLY RESOLVED** — instead of making the thresholds user-configurable in Settings (the alternative path mentioned in the original worklog item), we replaced the static-threshold approach with a transparent multi-factor churn-risk score that uses recency as ONE of four weighted components (no longer the sole signal). The existing Customer Lifecycle Stage feature (driven by `lastPaymentAt` + 7/30/60-day thresholds) remains untouched for backward compatibility; the new churn-risk widget surfaces a richer, revenue-weighted view alongside it on the dashboard. Future enhancement: tie the email CTAs in this card to the existing `EmailCompositionModal` (Phase 6) so clicking "Email →" or the recommended-action text opens the modal pre-filled with the matching lifecycle template (`lifecycle-winback` for critical, `lifecycle-reattract` for high) — currently the card just exposes a plain `mailto:` link.
+  3299→
