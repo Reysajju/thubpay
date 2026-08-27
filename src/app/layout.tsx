@@ -98,35 +98,27 @@ export const viewport: Viewport = {
   ],
 };
 
-// JSON-LD structured data for SEO
-const jsonLd = {
-  '@context': 'https://schema.org',
-  '@type': 'SoftwareApplication',
-  name: 'ThubPay',
-  applicationCategory: 'BusinessApplication',
-  operatingSystem: 'Web',
-  description:
-    'Multi-gateway payment platform for modern businesses. Connect Stripe, PayPal, Square, and more. Create invoices, manage subscriptions, and track payments.',
-  offers: {
-    '@type': 'Offer',
-    price: '0',
-    priceCurrency: 'USD',
-  },
-  aggregateRating: {
-    '@type': 'AggregateRating',
-    ratingValue: '4.8',
-    ratingCount: '1247',
-  },
-};
+import {
+  JsonLd,
+  getOrganizationSchema,
+  getWebSiteSchema,
+  getSoftwareApplicationSchema,
+} from '@/lib/json-ld';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const rootSchemaGraph = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      getOrganizationSchema(),
+      getWebSiteSchema(),
+      getSoftwareApplicationSchema(),
+    ],
+  };
+
   return (
     <html lang="en" className={inter.variable} data-scroll-behavior="smooth" suppressHydrationWarning>
       <head>
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-        />
+        <JsonLd data={rootSchemaGraph} />
         {/* Theme flash prevention — runs before React hydrates */}
         <script
           dangerouslySetInnerHTML={{

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
+import { JsonLd, getWebPageSchema } from '@/lib/json-ld';
 
 export const metadata: Metadata = {
   title: 'ThubPay — Multi-Gateway Payment Platform',
@@ -37,8 +38,16 @@ const trustedBy = [
 ];
 
 export default function HomePage() {
+  const homePageSchema = getWebPageSchema({
+    title: 'ThubPay — Multi-Gateway Payment Platform for Modern Businesses',
+    description:
+      'Accept payments your way. Bring your own Stripe, PayPal, Square, or Razorpay. Create invoices, send payment links, and manage your entire billing workflow from one dashboard.',
+    url: '/',
+  });
+
   return (
     <div className="min-h-screen bg-[#0a0a0b] text-white">
+      <JsonLd data={homePageSchema} />
       {/* Navbar */}
       <nav className="sticky top-0 z-50 border-b border-white/10 bg-[#0a0a0b]/80 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">

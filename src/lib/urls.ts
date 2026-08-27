@@ -5,18 +5,12 @@
 // with a `http://localhost:3000` link).
 
 function readBaseUrl(): string {
-  const fromEnv = process.env.NEXTAUTH_URL;
-  const isProd = process.env.NODE_ENV === 'production';
+  const fromEnv =
+    process.env.NEXTAUTH_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined) ||
+    process.env.NEXT_PUBLIC_APP_URL;
 
   if (!fromEnv) {
-    if (isProd) {
-      // Critical misconfiguration — better to throw loudly than to
-      // silently send customers to a localhost link.
-      throw new Error(
-        '[urls] NEXTAUTH_URL is not set. Configure it in your environment before generating absolute URLs.'
-      );
-    }
-    // Dev only — explicit fallback so logs make it obvious this is a dev value.
     return 'http://localhost:3000';
   }
 

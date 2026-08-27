@@ -1,7 +1,18 @@
 import Link from 'next/link';
+import type { Metadata } from 'next';
+import { JsonLd, getFaqSchema, getBreadcrumbSchema } from '@/lib/json-ld';
+
+export const metadata: Metadata = {
+  title: 'Frequently Asked Questions — ThubPay',
+  description:
+    'Find answers to common questions about ThubPay multi-gateway payment routing, Bring Your Own Gateway setup, AES-256 encryption, invoicing, and payment links.',
+  alternates: {
+    canonical: '/faqs',
+  },
+};
 
 const faqs = [
-  { q: 'What is ThubPay?', a: 'ThubPay is a multi-gateway payment platform that lets you bring your own payment gateway (Stripe, PayPal, Square, etc.) and manage invoices, payment links, and analytics from one dashboard.' },
+  { q: 'What is ThubPay?', a: 'ThubPay is a multi-gateway payment platform that lets you bring your own payment gateway (Stripe, PayPal, Square, Razorpay, etc.) and manage invoices, payment links, and analytics from one dashboard.' },
   { q: 'Do I need to add my own payment gateway?', a: 'Yes. ThubPay is built on the "Bring Your Own Gateway" model. You add your own Stripe, PayPal, or other gateway credentials securely in Settings. Your keys are AES-256-GCM encrypted.' },
   { q: 'Is my data secure?', a: 'Absolutely. All credentials are encrypted with AES-256-GCM. Every workspace is isolated with Row-Level Security (RLS) in our database. We never store plaintext secrets.' },
   { q: 'Can I use multiple gateways?', a: 'Yes! You can connect multiple gateways and even route payments through different gateways based on criteria like amount or currency.' },
@@ -9,8 +20,16 @@ const faqs = [
 ];
 
 export default function FAQsPage() {
+  const faqSchema = getFaqSchema(faqs);
+  const breadcrumbSchema = getBreadcrumbSchema([
+    { name: 'Home', url: '/' },
+    { name: 'FAQs', url: '/faqs' },
+  ]);
+
   return (
     <div className="min-h-screen bg-[#0a0a0b] text-white">
+      <JsonLd data={faqSchema} />
+      <JsonLd data={breadcrumbSchema} />
       <nav className="border-b border-white/10 bg-[#0a0a0b]/80 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4">
           <Link href="/" className="text-xl font-bold">ThubPay</Link>

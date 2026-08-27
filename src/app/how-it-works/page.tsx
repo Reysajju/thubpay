@@ -1,8 +1,34 @@
 import Link from 'next/link';
+import type { Metadata } from 'next';
+import { JsonLd, getHowToSchema, getBreadcrumbSchema } from '@/lib/json-ld';
+
+export const metadata: Metadata = {
+  title: 'How It Works — ThubPay Multi-Gateway Payments',
+  description:
+    'Learn how ThubPay works: Connect your gateways, generate smart payment links, send branded invoices, and accept payments with zero vendor lock-in.',
+  alternates: {
+    canonical: '/how-it-works',
+  },
+};
+
+const steps = [
+  { step: '1', title: 'Create Your Account', desc: 'Sign up for free and your workspace is automatically created.' },
+  { step: '2', title: 'Connect Your Gateway', desc: 'Add your Stripe, PayPal, or other payment gateway credentials securely. All keys are AES-256-GCM encrypted.' },
+  { step: '3', title: 'Create Invoices & Payment Links', desc: 'Generate branded invoices and shareable payment links that route through your gateway.' },
+  { step: '4', title: 'Get Paid', desc: 'Clients pay through your configured gateway. Track everything from your dashboard in real time.' },
+];
 
 export default function HowItWorksPage() {
+  const howToSchema = getHowToSchema(steps);
+  const breadcrumbSchema = getBreadcrumbSchema([
+    { name: 'Home', url: '/' },
+    { name: 'How It Works', url: '/how-it-works' },
+  ]);
+
   return (
     <div className="min-h-screen bg-[#0a0a0b] text-white">
+      <JsonLd data={howToSchema} />
+      <JsonLd data={breadcrumbSchema} />
       <nav className="border-b border-white/10 bg-[#0a0a0b]/80 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4">
           <Link href="/" className="text-xl font-bold">ThubPay</Link>
@@ -12,13 +38,8 @@ export default function HowItWorksPage() {
       <div className="mx-auto max-w-3xl px-4 py-16">
         <h1 className="text-4xl font-black mb-8">How It Works</h1>
         <div className="space-y-8">
-          {[
-            { step: '1', title: 'Create Your Account', desc: 'Sign up for free and your workspace is automatically created.' },
-            { step: '2', title: 'Connect Your Gateway', desc: 'Add your Stripe, PayPal, or other payment gateway credentials securely. All keys are AES-256-GCM encrypted.' },
-            { step: '3', title: 'Create Invoices & Payment Links', desc: 'Generate branded invoices and shareable payment links that route through your gateway.' },
-            { step: '4', title: 'Get Paid', desc: 'Clients pay through your configured gateway. Track everything from your dashboard in real time.' },
-          ].map((s) => (
-            <div key={s.step} className="flex gap-6">
+          {steps.map((s) => (
+            <div key={s.step} id={`step-${s.step}`} className="flex gap-6 scroll-mt-24">
               <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#059669] to-[#34D399] text-black font-black text-lg">{s.step}</div>
               <div>
                 <h3 className="text-lg font-semibold text-white">{s.title}</h3>
